@@ -191,6 +191,67 @@ def test_next_action_buttons_split_for_wide_terminal(data_dir):
     asyncio.run(drive())
 
 
+def test_vibe_input_is_large_enough_for_long_prompts(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "layout_large_input"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(252, 66)) as pilot:
+            await pilot.pause(0.2)
+            vibe_input = app.query_one("#center-pane #vibe-input")
+            send = app.query_one("#center-pane #transcribe-btn")
+            assert vibe_input.region.height >= 8
+            assert send.region.height >= 8
+
+    asyncio.run(drive())
+
+
+def test_loop_goal_keeps_user_in_actionable_conversation(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "loop_goal_actionable"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(252, 66)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.click("#right-col #loop-goal")
+            assert app.facilitator_turn["turn_type"] == "clarify"
+            ids = {c["id"] for c in app.facilitator_turn.get("choices", [])}
+            assert {"task", "explore", "other"}.issubset(ids)
+            assert "loop:goal" in app.last_action
+
+    asyncio.run(drive())
+
+
+def test_chinese_vibe_input_round_trip(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "zh_input_round_trip"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        from tests.tui_e2e.human_simulator import HumanDriver
+
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(160, 48)) as pilot:
+            driver = HumanDriver(app, pilot)
+            await driver.wait_idle()
+            text = "请分析这个项目告诉我下一步应该做什么"
+            await driver.type_and_send(text)
+            await pilot.pause(0.6)
+            chat = app.query_one("#center-pane #chat-thread")
+            rendered = "\n".join(str(child.content) for child in chat.children)
+            assert text in rendered
+            assert app.facilitator_turn.get("turn_type") in ("chat", "clarify", "propose")
+
+    asyncio.run(drive())
+
+
 def test_layout_mode_updates_after_terminal_resize(data_dir):
     os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
     pid = "layout_resize"

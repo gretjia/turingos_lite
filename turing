@@ -8,5 +8,7 @@ if [ ! -x "$PY" ]; then
   PY="${PYTHON:-python3}"
 fi
 
+export LANG="${LANG:-C.UTF-8}"
+export LC_CTYPE="${LC_CTYPE:-C.UTF-8}"
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 exec "$PY" -m turingos.cli "$@"
