@@ -34,6 +34,52 @@ def _git(args: list[str], cwd: Path) -> str:
         return ""
 
 
+def format_project_cognition(brief: dict[str, Any]) -> str:
+    """Human-readable project snapshot for TUI + Facilitator summaries."""
+    if not brief:
+        return "（暂无项目背景）"
+    lines: list[str] = []
+    pid = brief.get("project_id", "?")
+    lines.append(f"- **项目**: {pid}")
+    cwd = brief.get("cwd")
+    if cwd:
+        lines.append(f"- **路径**: `{cwd}`")
+    if brief.get("has_git"):
+        lines.append("- **Git**: 已连接")
+        remote = brief.get("github_remote")
+        if remote:
+            lines.append(f"- **Remote**: `{remote}`")
+        head = brief.get("macro_head")
+        if head:
+            lines.append(f"- **Macro head**: `{head}`")
+        commits = brief.get("recent_commits") or []
+        if commits:
+            lines.append("- **最近 commit**:")
+            for c in commits[:5]:
+                lines.append(f"  - `{c}`")
+    else:
+        lines.append("- **Git**: 未检测到")
+    dirs = brief.get("top_level_dirs") or []
+    if dirs:
+        lines.append(f"- **顶层目录**: {', '.join(dirs)}")
+    readme = (brief.get("readme_excerpt") or "").strip()
+    if readme:
+        one_line = " ".join(readme.split())[:360]
+        lines.append(f"- **README**: {one_line}…")
+    cfg = brief.get("config_status") or {}
+    lines.append(
+        f"- **AI 配置**: Facilitator={cfg.get('facilitator', '?')}, "
+        f"Meta={cfg.get('meta_ai', '?')}, model={cfg.get('facilitator_model', '?')}"
+    )
+    tip = brief.get("micro_tape_tip")
+    if tip:
+        lines.append(f"- **Micro tape tip**: `{tip}`")
+    caps = brief.get("open_capsules") or []
+    if caps:
+        lines.append(f"- **Open capsules**: {', '.join(caps)}")
+    return "\n".join(lines)
+
+
 def build_project_brief(
     project_id: str,
     cwd: Path | None = None,

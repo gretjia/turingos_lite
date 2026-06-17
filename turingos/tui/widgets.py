@@ -158,9 +158,14 @@ class VibeComposerPane(Vertical):
                 p["event_type"] for p in props
             ) if props else "")
         elif turn_type == "enrich":
-            tape.update("[dim]Post-approve enrichment — optional[/]")
+            tape.update(
+                "[dim]批准后可选补充 — 点「不需要，继续」查看项目认知并进入下一步[/]"
+            )
         else:
-            tape.update("[dim]选择一项，或选「其他需求」在下方输入[/]")
+            tape.update(
+                "[dim]选择一项；「我理解对了，可以提交」后出现 Approve；"
+                "「其他需求」在下方输入[/]"
+            )
         md.update("\n\n".join(parts))
         self._render_choices(turn.get("choices") or [])
         self._set_approve_visible(turn_type == "propose")

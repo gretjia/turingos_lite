@@ -65,7 +65,7 @@ def normalize_turn(data: dict[str, Any]) -> dict[str, Any]:
     proposals = data.get("proposals") or []
     if turn_type == "propose" and not proposals:
         turn_type = "clarify"
-    return {
+    out: dict[str, Any] = {
         "turn_type": turn_type,
         "summary": str(data.get("summary", "")).strip(),
         "choices": choices,
@@ -73,6 +73,10 @@ def normalize_turn(data: dict[str, Any]) -> dict[str, Any]:
         "facilitator_note": str(data.get("facilitator_note", "")).strip(),
         "skill_id": data.get("skill_id"),
     }
+    cog = data.get("project_cognition")
+    if cog:
+        out["project_cognition"] = str(cog).strip()
+    return out
 
 
 def parse_turn(raw: str) -> dict[str, Any]:

@@ -5,8 +5,12 @@ import os
 import pytest
 
 from turingos.events import make_event, SYSTEM_BOOTSTRAPPED, PROJECT_READY
-from turingos.facilitator.facilitate import facilitate_turn, mock_enrich_turn
-from turingos.facilitator.project_brief import build_project_brief
+from turingos.facilitator.facilitate import (
+    continue_after_skip_turn,
+    facilitate_turn,
+    mock_enrich_turn,
+)
+from turingos.facilitator.project_brief import build_project_brief, format_project_cognition
 from turingos.facilitator.schema import OTHER_CHOICE, SUBMIT_CHOICE, ensure_standard_choices
 from turingos.micro.git_tape import MicroGitTape
 from turingos.micro.rtool import MicroRtool
@@ -37,8 +41,18 @@ def test_boot_turn_clarify(data_dir):
     turn = facilitate_turn(boot=True, project_brief=brief, force_mock=True)
     assert turn["turn_type"] == "clarify"
     assert turn["summary"]
+    assert "项目认知" in turn["summary"]
     ids = {c["id"] for c in turn["choices"]}
     assert "submit" in ids and "other" in ids
+
+
+def test_skip_continue_not_silent(data_dir):
+    brief = build_project_brief("omega-wiki", data_dir=data_dir)
+    turn = continue_after_skip_turn(brief, session_turns=[])
+    assert turn["turn_type"] == "clarify"
+    assert "项目认知" in turn["summary"]
+    assert "submit" in {c["id"] for c in turn["choices"]}
+    assert format_project_cognition(brief) in turn["summary"]
 
 
 def test_existing_project_user_message_clarify(data_dir):
@@ -129,6 +143,9 @@ def test_simulated_user_full_flow_tui(data_dir):
 
             await app._facilitator_run(selected_choice_id="skip", select_action="skip")
             await pilot.pause(0.3)
+            assert app.facilitator_turn["turn_type"] == "clarify"
+            assert "项目认知" in app.facilitator_turn.get("summary", "")
+            assert "submit" in {c["id"] for c in app.facilitator_turn.get("choices", [])}
             await pilot.press("q")
             await pilot.pause()
 

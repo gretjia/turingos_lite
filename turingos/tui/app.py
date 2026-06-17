@@ -20,7 +20,7 @@ from textual.widgets import Button, Footer, Header, Input, Label, ListItem, List
 from turingos.config import load_facilitator_config, load_meta_config, save_meta_config
 from turingos.events import make_event
 from turingos.facilitator.facilitate import facilitate_turn, mock_enrich_turn
-from turingos.facilitator.project_brief import build_project_brief
+from turingos.facilitator.project_brief import build_project_brief, format_project_cognition
 from turingos.micro.reducer import reduce_state
 from turingos.micro.rtool import MicroRtool
 from turingos.micro.wtool import append as wtool_append
@@ -291,8 +291,16 @@ class TuiApp(App):
                 ev_lines.append(f"{eid}:{et}")
             except Exception:
                 pass
+        cognition = format_project_cognition(self.project_brief)
+        ev_display = [
+            "[bold]项目认知 (Facilitator)[/]",
+            cognition,
+            "—",
+            "[bold]Micro events[/]",
+            *ev_lines,
+        ]
         try:
-            self.query_one("#evidence-pane", EvidencePane).update_evidence(ev_lines)
+            self.query_one("#evidence-pane", EvidencePane).update_evidence(ev_display)
         except Exception:
             pass
         tt = self.facilitator_turn.get("turn_type", "")
@@ -300,7 +308,9 @@ class TuiApp(App):
         if self.pending_proposals:
             next_text += f"\n[pending {len(self.pending_proposals)} proposals — Approve]"
         elif tt == "clarify":
-            next_text += "\n[pick a choice or type + Transcribe]"
+            next_text += "\n[pick a choice;「可以提交」→ Approve;「其他需求」→ 输入]"
+        elif tt == "enrich":
+            next_text += "\n[optional enrich — skip continues with cognition report]"
         try:
             self.query_one("#next-pane", NextActionPane).update_action(
                 next_text, self.loop_progress
@@ -445,9 +455,11 @@ class TuiApp(App):
                 select_action="propose",
             ))
             return
-        if action == "skip":
-            self.last_action = "enrich skipped"
-            asyncio.create_task(self._facilitator_boot())
+        if action == "skip" or event.choice_id == "skip":
+            asyncio.create_task(self._facilitator_run(
+                selected_choice_id="skip",
+                select_action="skip",
+            ))
             return
         asyncio.create_task(self._facilitator_run(
             user_text="",
@@ -505,6 +517,8 @@ class TuiApp(App):
         except Exception:
             pass
         self.last_action = "session rejected"
+        self._boot_done = False
+        self.session_turns = []
         asyncio.create_task(self._facilitator_run(boot=True))
         self.refresh_projection()
 
