@@ -79,14 +79,21 @@
 - Audit: `python -m turingos.cli audit all` (or the standalone audit scripts in audits/).
 - Replay: use Micro Tape + anchors to reconstruct.
 
+**Agent entry (catalog)**
+
+1. This file (`AGENTS.md`) — invariants and principles
+2. **`HARNESS_INDEX.md`** — full registry of harness docs, project/global skills, scripts, test gates, trigger conflicts, and maintenance rules
+3. Project skills — `.grok/skills/README.md` → e.g. `/TuringLoop` for long-horizon loop work
+
 **References (for recursive audit)**
 
 - Full Charter/Plan: `TURINGOS_LITE_v1.0_PROJECT_CHARTER.md`
 - Research & Best Practices: `RESEARCH_KARPATKY_SOFTWARE3_VIBE_HARNESS_SYNTHESIS.md`
 - Canonical flowcharts, schemas, predicates, atom contracts: in the Charter.
+- Design rationale map: `architecture/07-index-and-conversation-map.md`
 - First demo script: in Charter section 17.
 
-This AGENTS.md + the two reference files constitute the local development harness for TuringOS Lite. All work must pass the charter's architecture invariants.
+This AGENTS.md + `HARNESS_INDEX.md` + the reference files constitute the local development harness for TuringOS Lite. All work must pass the charter's architecture invariants. **New or changed skills/scripts must update `HARNESS_INDEX.md`.**
 
 ---
 

@@ -34,7 +34,9 @@ env/
 
 # Runtime (per charter)
 .turingos/
-.grok/
+.grok/*
+!.grok/skills/
+!.grok/skills/**
 *.log
 
 # Misc

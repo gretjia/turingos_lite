@@ -1,0 +1,33 @@
+# TuringLoop TaskCapsule v1.2 — fill before starting loop
+task_id: "TL-YYYYMMDD-slug"
+description: ""          # one-line intent
+eta_estimate: "2h / 300 steps"   # REQUIRED
+ipqc_mode: auto
+ipqc_trigger: dynamic    # interval = max(3, round(ETA_steps * 0.12 / (1 + failure_rate)))
+mini_loop_enabled: true
+escalation_threshold: 2  # consecutive mini failures → ping human
+autonomy_target: 3       # tier 3 = agent auto-execute code capsules when gated
+
+# TuringOS charter bindings
+project_id: ""
+macro_root: ""           # git repo path
+micro_data_dir: ""       # TURINGOS_DATA_DIR
+worktree: ""             # .turingos/worktrees/<name> or empty for main
+
+allowed_files: []        # surgical scope
+forbidden_files: []      # never touch
+acceptance_commands:
+  - "./run_test.sh"
+  # TUI UX changes also require:
+  # - "./scripts/run_human_tui_audit.sh"
+
+human_ux_gate: false     # true if any turingos/tui/* changes
+high_risk: false         # true → human ping at start
+
+failure_rate: 0.0
+rules_learned: []        # permanent rules extracted from mini-recovery
+handoff:
+  branch: ""
+  commit_sha: ""
+  pr_url: ""
+  open_risks: []

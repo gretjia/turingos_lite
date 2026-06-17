@@ -2,6 +2,8 @@
 
 This is the entry point for the architecture history.
 
+**Agent operational catalog (skills, scripts, test gates):** see repo root `HARNESS_INDEX.md` — not duplicated here.
+
 ## Quick Map of Conversations → Current Code
 - **00-original-charter-and-vision.md** → The immutable source. Everything must pass its FC-A audits, invariants (dual tapes, scale, Micro Predicate as gate, projection TUI, failure appends, etc.), and phase/atom order.
 - **01-software-3.0-vision-and-karpathy-design.md** → The "think like Karpathy" synthesis that shaped the overall harness philosophy (loops as central work, harness as OS, Micro Tape as durable agency memory, projection UX, multi-agent roles, whitebox boundaries, behavioral constraints). Directly influenced keyring design, event recording of config changes, TUI first-run as guided loop, etc.
