@@ -52,6 +52,27 @@ def _get_meta_config_path() -> Path:
     return META_CONFIG_FILE
 
 
+def _apply_meta_env_extras(cfg: dict[str, Any]) -> None:
+    """Optional provider-specific knobs (NVIDIA Nemotron, etc.) via env."""
+    if os.environ.get("TURINGOS_META_TEMPERATURE"):
+        cfg["temperature"] = float(os.environ["TURINGOS_META_TEMPERATURE"])
+    if os.environ.get("TURINGOS_META_TOP_P"):
+        cfg["top_p"] = float(os.environ["TURINGOS_META_TOP_P"])
+    if os.environ.get("TURINGOS_META_MAX_TOKENS"):
+        cfg["max_tokens"] = int(os.environ["TURINGOS_META_MAX_TOKENS"])
+    stream = os.environ.get("TURINGOS_META_STREAM", "").lower()
+    if stream in ("1", "true", "yes"):
+        cfg["stream"] = True
+    if os.environ.get("TURINGOS_META_EXTRA_BODY"):
+        try:
+            cfg["extra_body"] = json.loads(os.environ["TURINGOS_META_EXTRA_BODY"])
+        except Exception:
+            pass
+    base = cfg.get("base_url") or ""
+    if "nvidia.com" in base and "provider" not in cfg:
+        cfg["provider"] = "nvidia"
+
+
 def load_meta_config() -> dict[str, Any]:
     """Load Meta AI (Facilitator/proposer) config.
 
@@ -68,12 +89,14 @@ def load_meta_config() -> dict[str, Any]:
     env_model = os.environ.get("TURINGOS_META_MODEL")
 
     if env_base or env_key or env_model:
-        return {
+        cfg: dict[str, Any] = {
             "base_url": env_base or "https://api.openai.com/v1",
             "api_key": env_key,
             "model": env_model or "gpt-4o-mini",
             "source": "env",
         }
+        _apply_meta_env_extras(cfg)
+        return cfg
 
     # Persisted metadata
     meta: dict[str, Any] = {

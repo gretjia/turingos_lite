@@ -39,4 +39,5 @@ env/
 
 # Misc
 .env
+nvidia_env.sh
 .DS_Store
