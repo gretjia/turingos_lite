@@ -106,12 +106,22 @@ class TuiApp(App):
     #config-input-row { height: auto; min-height: 3; }
     #config-input { width: 1fr; height: 3; min-height: 3; border: solid #58a6ff; }
     #config-input-hint { height: auto; min-height: 1; margin-bottom: 1; }
+    #loop-controls { height: auto; }
+    #loop-row-primary, #loop-row-action { height: 3; }
+    #loop-controls Button { width: 1fr; min-width: 8; margin: 0 1 0 0; }
     .compact #left-pane, .compact #right-col, .compact #autonomy-row { display: none; }
     .compact #center-pane { width: 1fr; border-right: none; }
     .compact #composer-hint { display: none; }
     .compact #chat-thread { display: none; }
     .compact #preview-md { max-height: 5; }
     .compact #top-bar { height: 1; }
+    .focus #left-pane, .focus #right-col, .focus #autonomy-row { display: none; }
+    .focus #center-pane { width: 1fr; border-right: none; }
+    .focus #chat-thread { height: 5; }
+    .focus #composer-body { min-height: 16; }
+    .wide #left-pane { width: 30%; }
+    .wide #center-pane { width: 40%; }
+    .wide #right-col { width: 30%; }
     """
 
     BINDINGS = [
@@ -263,17 +273,26 @@ class TuiApp(App):
         self._sync_compact_layout()
         if not self.headless:
             asyncio.create_task(self._facilitator_boot())
+        self.set_interval(0.5, self._sync_compact_layout)
 
     def on_resize(self, _event) -> None:
         self._sync_compact_layout()
 
     def _sync_compact_layout(self) -> None:
-        """SSH-friendly layout: full-width composer on 80×24-class terminals."""
-        compact = self.size.height <= 28 or self.size.width <= 100
-        if compact:
-            self.add_class("compact")
+        """Terminal-friendly layout modes for small, regular, and wide sessions."""
+        height = self.size.height
+        width = self.size.width
+        if height <= 28 or width <= 100:
+            mode = "compact"
+        elif height <= 36 or width <= 140:
+            mode = "focus"
         else:
-            self.remove_class("compact")
+            mode = "wide"
+        for klass in ("compact", "focus", "wide"):
+            if klass == mode:
+                self.add_class(klass)
+            else:
+                self.remove_class(klass)
 
     def _blur_inputs(self) -> None:
         """Blur NL inputs so legacy hotkeys (A/r/…) reach App key handlers."""
@@ -330,13 +349,7 @@ class TuiApp(App):
             except Exception:
                 pass
         cognition = format_project_cognition(self.project_brief)
-        ev_display = [
-            "[bold]项目认知 (Facilitator)[/]",
-            cognition,
-            "—",
-            "[bold]Micro events[/]",
-            *ev_lines,
-        ]
+        ev_display = self._format_evidence_lines(q, ev_lines)
         try:
             self.query_one("#evidence-pane", EvidencePane).update_evidence(ev_display)
         except Exception:
@@ -365,6 +378,23 @@ class TuiApp(App):
             pass
         if q.get("project_status") == "delivered" or self.delivered:
             self._show_delivery()
+
+    def _format_evidence_lines(self, projection: dict, ev_lines: list[str]) -> list[str]:
+        tip = projection.get("tape_tip") or "—"
+        accepted = projection.get("accepted_head") or "—"
+        short_tip = tip if tip == "—" else f"{tip[:12]}…{tip[-6:]}"
+        short_acc = accepted if accepted == "—" else f"{accepted[:12]}…{accepted[-6:]}"
+        lines = [
+            "[bold]Evidence[/]",
+            f"Project: {projection.get('project_id', self.project_id)}",
+            f"Status: {projection.get('project_status', 'unknown')}",
+            f"Tip: {short_tip}",
+            f"Accepted: {short_acc}",
+            "—",
+            "[bold]Micro events[/]",
+        ]
+        lines.extend(ev_lines[-8:] or ["[dim]no events[/]"])
+        return lines
 
     def _show_delivery(self) -> None:
         artifact = self._artifact_path()

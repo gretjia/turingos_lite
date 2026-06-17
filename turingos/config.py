@@ -150,6 +150,27 @@ def _apply_meta_env_extras(cfg: dict[str, Any]) -> None:
         cfg["provider"] = "nvidia"
 
 
+def _apply_worker_env_extras(cfg: dict[str, Any]) -> None:
+    """Worker API knobs must be isolated from Meta/Facilitator env."""
+    if os.environ.get("TURINGOS_WORKER_TEMPERATURE"):
+        cfg["temperature"] = float(os.environ["TURINGOS_WORKER_TEMPERATURE"])
+    if os.environ.get("TURINGOS_WORKER_TOP_P"):
+        cfg["top_p"] = float(os.environ["TURINGOS_WORKER_TOP_P"])
+    if os.environ.get("TURINGOS_WORKER_MAX_TOKENS"):
+        cfg["max_tokens"] = int(os.environ["TURINGOS_WORKER_MAX_TOKENS"])
+    stream = os.environ.get("TURINGOS_WORKER_STREAM", "").lower()
+    if stream in ("1", "true", "yes"):
+        cfg["stream"] = True
+    if os.environ.get("TURINGOS_WORKER_EXTRA_BODY"):
+        try:
+            cfg["extra_body"] = json.loads(os.environ["TURINGOS_WORKER_EXTRA_BODY"])
+        except Exception:
+            pass
+    base = cfg.get("base_url") or ""
+    if "nvidia.com" in base and "provider" not in cfg:
+        cfg["provider"] = "nvidia"
+
+
 def load_meta_config() -> dict[str, Any]:
     """Load Meta AI (Facilitator/proposer) config.
 
@@ -260,7 +281,7 @@ def load_worker_config() -> dict[str, Any]:
             "source": "env",
             "worker": "api",
         }
-        _apply_meta_env_extras(cfg)
+        _apply_worker_env_extras(cfg)
         return cfg
 
     meta: dict[str, Any] = {
@@ -288,7 +309,7 @@ def load_worker_config() -> dict[str, Any]:
             meta["api_key"] = None
     else:
         meta["api_key"] = None
-    _apply_meta_env_extras(meta)
+    _apply_worker_env_extras(meta)
     return meta
 
 

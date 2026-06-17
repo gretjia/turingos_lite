@@ -7,7 +7,12 @@ from turingos.facilitator.provider_registry import build_worker_api_targets
 WORKER_API_MCQ_IDS = list(build_worker_api_targets().keys())
 
 # Config menu top-level
-CONFIG_MENU_MCQS = ("skill_nvidia", "skill_openai", "skill_worker")
+CONFIG_MENU_MCQS = (
+    "skill_deepseek_facilitator",
+    "skill_nvidia",
+    "skill_openai",
+    "skill_worker",
+)
 
 # Main boot MCQs
 BOOT_MCQS = ("explore", "task", "ai_setup", "submit", "other")

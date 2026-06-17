@@ -32,6 +32,10 @@ def test_worker_api_deepseek_starts_wizard():
     assert draft["kind"] == "worker"
     assert draft["step"] == "base_url"
     assert "deepseek" in draft["base_url"].lower()
+    assert draft["model"] == "deepseek-v4-flash"
+    labels = {c["label"] for c in turn["choices"]}
+    assert any("deepseek-v4-flash" in label for label in labels)
+    assert any("deepseek-v4-pro" in label for label in labels)
 
 
 def test_bearer_token_in_base_url_step_goes_to_api_key():
@@ -52,7 +56,16 @@ def test_bearer_token_in_base_url_step_goes_to_api_key():
     assert "步骤 3/3" in turn2["summary"]
 
 
-def test_cfg_save_worker_shows_connectivity_success():
+def test_cfg_save_worker_shows_connectivity_success(monkeypatch):
+    saved = {}
+
+    def save_worker_config(**kwargs):
+        saved.update(kwargs)
+
+    monkeypatch.setattr(
+        "turingos.facilitator.config_wizard.save_worker_config",
+        save_worker_config,
+    )
     draft = {
         "target_id": "worker_api_deepseek",
         "kind": "worker",
@@ -60,8 +73,8 @@ def test_cfg_save_worker_shows_connectivity_success():
         "skill_id": "setup-worker-api-openai",
         "provider_id": "deepseek",
         "step": "confirm",
-        "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
         "api_key": "sk-test123456789012345678901234",
     }
     turn, out = run_config_wizard(
@@ -74,6 +87,8 @@ def test_cfg_save_worker_shows_connectivity_success():
     assert "已保存并测试通过" in turn["summary"]
     assert turn["setup_result"]["ok"]
     assert "继续项目流程" in turn["choices"][0]["label"]
+    assert saved["provider_id"] == "deepseek"
+    assert saved["model"] == "deepseek-v4-flash"
 
 
 def test_meta_wizard_step_flow():

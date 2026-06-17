@@ -28,8 +28,12 @@ _INVOKE_URL_RE = re.compile(
 _AUTH_HDR_RE = re.compile(
     r"Authorization[\"']?\s*:\s*[\"']Bearer\s+([^\"']+)[\"']", re.I
 )
-_MODEL_RE = re.compile(r"\"model\"\s*:\s*\"([^\"]+)\"")
+_MODEL_RE = re.compile(r"[\"']?model[\"']?\s*[:=]\s*[\"']([^\"']+)[\"']")
 _THINKING_RE = re.compile(r"enable_thinking[\"']?\s*:\s*(True|False)", re.I)
+_THINKING_TYPE_RE = re.compile(
+    r"[\"']thinking[\"']\s*:\s*\{[^{}]*[\"']type[\"']\s*:\s*[\"'](enabled|disabled)[\"']",
+    re.I,
+)
 _FLOAT_FIELD_RE = re.compile(r"\"(temperature|top_p)\"\s*:\s*([0-9.]+)")
 _INT_FIELD_RE = re.compile(r"\"max_tokens\"\s*:\s*(\d+)")
 
@@ -79,12 +83,18 @@ def parse_provider_paste(text: str) -> dict[str, Any]:
     model = model.group(1) if model else None
 
     thinking = None
-    tm = _THINKING_RE.search(raw)
-    if tm:
-        thinking = tm.group(1).lower() == "true"
-
     extra_body = None
-    if thinking is not None:
+    dtm = _THINKING_TYPE_RE.search(raw)
+    if dtm:
+        thinking = dtm.group(1).lower() == "enabled"
+        extra_body = {
+            "thinking": {
+                "type": "enabled" if thinking else "disabled",
+            },
+        }
+    tm = _THINKING_RE.search(raw)
+    if tm and thinking is None:
+        thinking = tm.group(1).lower() == "true"
         extra_body = {"chat_template_kwargs": {"enable_thinking": thinking}}
 
     temperature = top_p = None
@@ -174,21 +184,28 @@ def test_openai_compatible(cfg: dict[str, Any]) -> dict[str, Any]:
 
         client = OpenAI(base_url=cfg.get("base_url"), api_key=api_key)
         t0 = time.monotonic()
+        extra = cfg.get("extra_body")
+        thinking_enabled = (
+            isinstance(extra, dict)
+            and (extra.get("thinking") or {}).get("type") == "enabled"
+        )
         kwargs: dict[str, Any] = {
             "model": cfg.get("model", "gpt-4o-mini"),
             "messages": [{"role": "user", "content": "Reply with exactly: pong"}],
-            "max_tokens": 16,
+            "max_tokens": 256 if thinking_enabled else 16,
         }
-        extra = cfg.get("extra_body")
         if extra:
             kwargs["extra_body"] = extra
         resp = client.chat.completions.create(**kwargs)
         latency = int((time.monotonic() - t0) * 1000)
-        content = (resp.choices[0].message.content or "").strip()
+        msg = resp.choices[0].message
+        content = (msg.content or "").strip()
+        reasoning = (getattr(msg, "reasoning_content", None) or "").strip()
         return {
             "ok": "pong" in content.lower() or len(content) > 0,
             "latency_ms": latency,
             "sample": content[:80],
+            "has_reasoning": bool(reasoning),
             "model": cfg.get("model"),
         }
     except Exception as e:
@@ -215,10 +232,16 @@ def apply_provider_config(
     mdl = model or prof["default_model"]
     extra = dict(extra_body) if extra_body else None
     if extra is None:
-        if thinking is True and prof.get("extra_body_default"):
+        thinking_map = prof.get("thinking_extra_body")
+        if thinking is not None and thinking_map:
+            extra = dict(thinking_map[bool(thinking)])
+        elif thinking is True and prof.get("extra_body_default"):
             extra = dict(prof["extra_body_default"])
         elif thinking is False and prof.get("thinking_toggle"):
-            extra = {"chat_template_kwargs": {"enable_thinking": False}}
+            if prof.get("thinking_toggle") == "extra_body.thinking.type":
+                extra = {"thinking": {"type": "disabled"}}
+            else:
+                extra = {"chat_template_kwargs": {"enable_thinking": False}}
 
     save_kw: dict[str, Any] = {
         "base_url": base,
