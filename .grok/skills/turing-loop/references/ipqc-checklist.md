@@ -1,6 +1,8 @@
-# IPQC Scan Checklist (TuringLoop)
+# IPQC Scan Checklist (TuringLoop v1.3)
 
-Run at dynamic intervals. Non-blocking unless triggers Mini-Recovery.
+Run at Step 5 (VERIFY/IPQC), at dynamic intervals during implement. Non-blocking unless triggers Mini-Recovery.
+
+**On any issue:** run `fresh_bp(topic, context)` per `references/best-practice-alignment.md` (quality alignment).
 
 ## 1. Consistency
 - [ ] Changes trace to TaskCapsule `task_id` / user intent
@@ -33,4 +35,5 @@ ipqc_pass: true|false
 issues: []
 simplifier_required: true|false
 mini_recovery_triggered: true|false
+alignment_triggered: true|false   # true if fresh_bp ran on issue
 ```

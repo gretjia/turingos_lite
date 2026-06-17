@@ -2,7 +2,7 @@
 
 **Purpose:** Single operational catalog for agents and humans. Answers: *what harness/skills exist, when to use each, what conflicts, and what acceptance gates apply.*
 
-**Last verified:** 2026-06-17 (`git log -1 --oneline HARNESS_INDEX.md`) — update date whenever entries change.
+**Last verified:** 2026-06-17 — update date whenever entries change (`git log -1 --oneline HARNESS_INDEX.md`).
 
 ---
 
@@ -58,13 +58,14 @@
 
 | id | slash | path | triggers | when_to_use | when_not | acceptance | conflicts_with | owner |
 |----|-------|------|----------|-------------|----------|------------|----------------|-------|
-| `turing-loop` | `/TuringLoop` | `.grok/skills/turing-loop/SKILL.md` | `/TuringLoop`, `Activate AgenticForgeLoop`, `TuringLoop`, `loop engineering` | Long-horizon atoms/phases; multi-agent IPQC; TUI redesign follow-ups | Single-file fix; no ETA | TaskCapsule `acceptance_commands` + `./run_test.sh` (+ human audit if TUI) | `/implement` (generic), ad-hoc orchestration | project |
+| `turing-loop` | `/TuringLoop` | `.grok/skills/turing-loop/SKILL.md` | `/TuringLoop`, `Activate AgenticForgeLoop v1.3`, `TuringLoop`, `loop engineering` | Long-horizon atoms/phases; IPQC; BestPractice Alignment (`fresh_bp`); Reflect; Mini-Recovery | Single-file fix; no ETA | TaskCapsule `acceptance_commands` + `./run_test.sh` (+ human audit if TUI) | `/implement` (generic), ad-hoc orchestration | project |
 
 **References (turing-loop):**
 
 | path | purpose |
 |------|---------|
-| `.grok/skills/turing-loop/references/task-capsule-template.yaml` | TaskCapsule template |
+| `.grok/skills/turing-loop/references/task-capsule-template.yaml` | TaskCapsule v1.3 (`frontier_mode`, `alignment_topics`) |
+| `.grok/skills/turing-loop/references/best-practice-alignment.md` | `fresh_bp` / `force_alignment` sub-tool |
 | `.grok/skills/turing-loop/references/ipqc-checklist.md` | IPQC four-dimension scan |
 | `.grok/skills/turing-loop/scripts/calc-ipqc-interval.sh` | IPQC interval from ETA |
 
@@ -164,3 +165,4 @@ Use when the task is **not** TuringOS-specific. Paths are on the developer machi
 | date | change |
 |------|--------|
 | 2026-06-17 | Initial index: turing-loop, test gates, global/bundled skill pointers, agent entry block |
+| 2026-06-17 | turing-loop → AgenticForgeLoop v1.3: BestPractice Alignment Pass, Reflect step, TaskCapsule `frontier_mode` |
