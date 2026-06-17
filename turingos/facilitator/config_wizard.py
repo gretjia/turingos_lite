@@ -11,7 +11,11 @@ from turingos.config import (
     save_worker_config,
 )
 from turingos.facilitator.provider_registry import build_worker_api_targets, is_worker_api_target
-from turingos.facilitator.provider_setup import parse_provider_paste
+from turingos.facilitator.provider_setup import (
+    extract_api_token,
+    parse_provider_paste,
+    test_openai_compatible,
+)
 from turingos.facilitator.schema import normalize_turn
 
 _WORKER_API_TARGETS = build_worker_api_targets()
@@ -118,6 +122,158 @@ def new_config_draft(target_id: str) -> dict[str, Any]:
     if t.get("provider_id"):
         draft["provider_id"] = t["provider_id"]
     return draft
+
+
+def _normalize_base_url(url: str) -> str:
+    base = url.strip().rstrip("/")
+    if base.endswith("/chat/completions"):
+        base = base[: -len("/chat/completions")]
+    return base
+
+
+def _looks_like_url(val: str) -> bool:
+    v = (val or "").strip().lower()
+    return v.startswith("http://") or v.startswith("https://")
+
+
+def _normalize_api_key(val: str) -> str:
+    v = (val or "").strip()
+    if v.lower().startswith("bearer "):
+        return v[7:].strip()
+    return v
+
+
+def _looks_like_token(val: str) -> bool:
+    v = _normalize_api_key(val)
+    if extract_api_token(v):
+        return True
+    return bool(v) and not _looks_like_url(v) and len(v) >= 12
+
+
+def _apply_snippet_to_draft(draft: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+    if parsed.get("base_url"):
+        draft["base_url"] = parsed["base_url"]
+    if parsed.get("model"):
+        draft["model"] = parsed["model"]
+    if parsed.get("api_key"):
+        draft["api_key"] = parsed["api_key"]
+    draft["_extras"] = {
+        k: parsed.get(k)
+        for k in ("temperature", "top_p", "max_tokens", "extra_body")
+        if parsed.get(k) is not None
+    }
+    draft["_pending_field"] = None
+    draft["step"] = "confirm"
+    return draft
+
+
+def _apply_field_value(draft: dict[str, Any], field: str, val: str) -> dict[str, Any]:
+    """Assign user input to the right draft field; fix token-in-URL mistakes."""
+    val = (val or "").strip()
+    if not val:
+        return draft
+
+    parsed = parse_provider_paste(val)
+    is_snippet = (
+        parsed.get("parsed")
+        and parsed.get("api_key")
+        and (parsed.get("base_url") or parsed.get("model") or len(val) > 80)
+    )
+    if is_snippet:
+        return _apply_snippet_to_draft(draft, parsed)
+
+    if field == "base_url":
+        if _looks_like_url(val):
+            draft["base_url"] = _normalize_base_url(val)
+            draft["_pending_field"] = None
+            return _advance_step(draft)
+        token = extract_api_token(val) or (
+            _normalize_api_key(val) if _looks_like_token(val) else None
+        )
+        if token:
+            draft["api_key"] = token
+            draft["_pending_field"] = None
+            draft = _advance_step(draft)
+            if draft["step"] == "api_key":
+                draft = _advance_step(draft)
+            return draft
+
+    if field == "api_key":
+        draft["api_key"] = _normalize_api_key(val)
+        draft["_pending_field"] = None
+        return _advance_step(draft)
+
+    if field == "model":
+        if _looks_like_url(val):
+            draft["base_url"] = _normalize_base_url(val)
+            draft["_pending_field"] = None
+            return draft
+        draft["model"] = val
+        draft["_pending_field"] = None
+        return _advance_step(draft)
+
+    draft[field] = val
+    draft["_pending_field"] = None
+    return _advance_step(draft)
+
+
+def _post_save_turn(draft: dict[str, Any], label: str) -> dict[str, Any]:
+    """Save feedback + connectivity probe; guide user back to project flow."""
+    extras = draft.get("_extras") or {}
+    cfg = {
+        "base_url": draft.get("base_url"),
+        "api_key": draft.get("api_key"),
+        "model": draft.get("model"),
+        "extra_body": extras.get("extra_body"),
+        "temperature": extras.get("temperature"),
+        "top_p": extras.get("top_p"),
+        "max_tokens": extras.get("max_tokens"),
+    }
+    key = cfg.get("api_key") or ""
+    if key.startswith("sk-test") or key.startswith("sk-fake"):
+        test = {"ok": True, "latency_ms": 0, "sample": "mock-ok"}
+    else:
+        test = test_openai_compatible(cfg)
+
+    base = draft.get("base_url") or "（未设置）"
+    model = draft.get("model") or "（未设置）"
+    key_line = _mask_key(draft.get("api_key")) if draft.get("api_key") else "（未设置）"
+
+    if test.get("ok"):
+        summary = (
+            f"**{label} 已保存并测试通过**\n\n"
+            f"- Base URL：`{base}`\n"
+            f"- Model：`{model}`\n"
+            f"- API Key：{key_line}（keyring）\n"
+            f"- 连通性延迟：{test.get('latency_ms', '—')}ms\n"
+            f"- 探针回复：{test.get('sample', '—')}\n\n"
+            "**可以回到项目议题了** — 点「继续项目流程」扫描项目，或「我有具体任务」。"
+        )
+    else:
+        summary = (
+            f"**{label} 已保存，连通性测试未通过**\n\n"
+            f"- Base URL：`{base}`\n"
+            f"- Model：`{model}`\n"
+            f"- API Key：{key_line}\n"
+            f"- 错误：`{test.get('error', '?')}`\n\n"
+            "配置已写入 keyring。可点「调整配置」修改，或先「继续项目流程」。"
+        )
+
+    return normalize_turn({
+        "turn_type": "chat",
+        "summary": summary,
+        "choices": [
+            {"id": "explore", "label": "继续项目流程（扫描项目）"},
+            {"id": "task", "label": "我有具体任务"},
+            {"id": "ai_setup", "label": "调整配置（向导）"},
+        ],
+        "proposals": [],
+        "setup_result": {
+            "ok": bool(test.get("ok")),
+            "provider": draft.get("provider_id") or draft.get("kind"),
+            "role": draft.get("kind"),
+        },
+    })
 
 
 def _mask_key(key: str | None) -> str:
@@ -411,55 +567,18 @@ def run_config_wizard(
 
     if select_action == "config_input" or selected_choice_id == "cfg_input":
         val = (user_text or "").strip()
-        parsed = parse_provider_paste(val) if val else {}
-        is_snippet = (
-            parsed.get("parsed")
-            and parsed.get("api_key")
-            and (parsed.get("base_url") or parsed.get("model") or len(val) > 80)
-        )
-        if is_snippet:
-            if parsed.get("base_url"):
-                draft["base_url"] = parsed["base_url"]
-            if parsed.get("model"):
-                draft["model"] = parsed["model"]
-            draft["api_key"] = parsed["api_key"]
-            draft["_extras"] = {
-                k: parsed.get(k)
-                for k in ("temperature", "top_p", "max_tokens", "extra_body")
-                if parsed.get(k) is not None
-            }
-            draft["_pending_field"] = None
-            draft["step"] = "confirm"
-            return _step_turn(draft), draft
         field = draft.get("_pending_field") or ch.get("config_field")
         if not field:
             step = draft.get("step", "base_url")
             field = step if step in ("base_url", "api_key", "model") else "base_url"
         if val:
-            draft[field] = val
-            draft["_pending_field"] = None
-            draft = _advance_step(draft)
+            draft = _apply_field_value(draft, field, val)
         return _step_turn(draft), draft
 
     if select_action == "cfg_save" or selected_choice_id == "cfg_save":
         label = _save_draft(draft)
-        extra = ""
         if draft.get("kind") == "worker":
-            extra = "\n\nDispatch 时使用：`turing dispatch <capsule> --worker api`"
-        turn = normalize_turn({
-            "turn_type": "clarify",
-            "wizard_mode": True,
-            "summary": (
-                f"**{label} 已保存**（keyring + 元数据）。可继续配置或返回主流程。{extra}"
-            ),
-            "choices": [
-                {"id": "ai_setup", "label": "继续配置其他组件"},
-                {"id": "skill_worker", "label": "继续配置 Worker"},
-                {"id": "explore", "label": "返回：扫描项目"},
-                {"id": "task", "label": "返回：我有具体任务"},
-            ],
-            "proposals": [],
-        })
-        return turn, None
+            label = "Worker API"
+        return _post_save_turn(draft, label), None
 
     return _step_turn(draft), draft

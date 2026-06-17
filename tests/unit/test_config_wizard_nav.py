@@ -34,6 +34,48 @@ def test_worker_api_deepseek_starts_wizard():
     assert "deepseek" in draft["base_url"].lower()
 
 
+def test_bearer_token_in_base_url_step_goes_to_api_key():
+    """Regression: pasting Bearer nvapi- in URL step must not corrupt base_url."""
+    turn, draft = run_config_wizard(selected_choice_id="worker_api_custom")
+    assert draft and draft["step"] == "base_url"
+    token = "Bearer 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"
+    turn2, draft2 = run_config_wizard(
+        config_draft=draft,
+        select_action="config_input",
+        user_text=token,
+        choice={"config_field": "base_url"},
+    )
+    assert draft2["step"] == "model"
+    assert draft2["base_url"].startswith("https://")
+    assert draft2["api_key"].startswith("nvapi-")
+    assert "Bearer" not in draft2["base_url"]
+    assert "步骤 3/3" in turn2["summary"]
+
+
+def test_cfg_save_worker_shows_connectivity_success():
+    draft = {
+        "target_id": "worker_api_deepseek",
+        "kind": "worker",
+        "title": "Worker API — DeepSeek",
+        "skill_id": "setup-worker-api-openai",
+        "provider_id": "deepseek",
+        "step": "confirm",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "api_key": "sk-test123456789012345678901234",
+    }
+    turn, out = run_config_wizard(
+        config_draft=draft,
+        selected_choice_id="cfg_save",
+        select_action="cfg_save",
+    )
+    assert out is None
+    assert turn["turn_type"] == "chat"
+    assert "已保存并测试通过" in turn["summary"]
+    assert turn["setup_result"]["ok"]
+    assert "继续项目流程" in turn["choices"][0]["label"]
+
+
 def test_meta_wizard_step_flow():
     turn, draft = run_config_wizard(selected_choice_id="skill_openai")
     assert draft and draft["step"] == "base_url"

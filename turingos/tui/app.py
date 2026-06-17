@@ -665,7 +665,11 @@ class TuiApp(App):
         from turingos.facilitator.provider_setup import is_provider_paste
 
         if self.config_draft and is_provider_paste(text):
-            asyncio.create_task(self._facilitator_run(user_text=text))
+            asyncio.create_task(self._facilitator_run(
+                user_text=text,
+                selected_choice_id="cfg_input",
+                select_action="config_input",
+            ))
             self.awaiting_config_field = None
             try:
                 self.query_one("#center-pane", VibeComposerPane).hide_config_input()
