@@ -44,12 +44,110 @@ CONFIG_DIR = XDG_DATA_HOME / "turingos" / "config"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 META_CONFIG_FILE = CONFIG_DIR / "meta_ai.json"
+FACILITATOR_CONFIG_FILE = CONFIG_DIR / "facilitator_ai.json"
+WORKER_CONFIG_FILE = CONFIG_DIR / "worker_ai.json"
 KEYRING_SERVICE = "turingos"
 KEYRING_USERNAME = "meta_ai"
+KEYRING_FACILITATOR_USERNAME = "facilitator_ai"
+KEYRING_WORKER_USERNAME = "worker_ai"
 
 
 def _get_meta_config_path() -> Path:
     return META_CONFIG_FILE
+
+
+def _apply_facilitator_env_extras(cfg: dict[str, Any]) -> None:
+    """NVIDIA Diffusion Gemma and other facilitator knobs."""
+    if os.environ.get("TURINGOS_FACILITATOR_TEMPERATURE"):
+        cfg["temperature"] = float(os.environ["TURINGOS_FACILITATOR_TEMPERATURE"])
+    if os.environ.get("TURINGOS_FACILITATOR_TOP_P"):
+        cfg["top_p"] = float(os.environ["TURINGOS_FACILITATOR_TOP_P"])
+    if os.environ.get("TURINGOS_FACILITATOR_MAX_TOKENS"):
+        cfg["max_tokens"] = int(os.environ["TURINGOS_FACILITATOR_MAX_TOKENS"])
+    stream = os.environ.get("TURINGOS_FACILITATOR_STREAM", "").lower()
+    if stream in ("1", "true", "yes"):
+        cfg["stream"] = True
+    if os.environ.get("TURINGOS_FACILITATOR_EXTRA_BODY"):
+        try:
+            cfg["extra_body"] = json.loads(os.environ["TURINGOS_FACILITATOR_EXTRA_BODY"])
+        except Exception:
+            pass
+    elif "nvidia.com" in (cfg.get("base_url") or ""):
+        cfg.setdefault("extra_body", {"chat_template_kwargs": {"enable_thinking": True}})
+    base = cfg.get("base_url") or ""
+    if "nvidia.com" in base:
+        cfg["provider"] = "nvidia"
+
+
+def load_facilitator_config() -> dict[str, Any]:
+    """Facilitator AI (fast MCQ co-pilot). Separate from Meta/Work AI."""
+    env_base = os.environ.get("TURINGOS_FACILITATOR_BASE_URL")
+    env_key = os.environ.get("TURINGOS_FACILITATOR_API_KEY")
+    env_model = os.environ.get("TURINGOS_FACILITATOR_MODEL")
+
+    if env_base or env_key or env_model:
+        cfg: dict[str, Any] = {
+            "base_url": env_base or "https://integrate.api.nvidia.com/v1",
+            "api_key": env_key,
+            "model": env_model or "google/diffusiongemma-26b-a4b-it",
+            "source": "env",
+        }
+        _apply_facilitator_env_extras(cfg)
+        return cfg
+
+    meta: dict[str, Any] = {
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "google/diffusiongemma-26b-a4b-it",
+        "source": "persisted",
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "max_tokens": 4096,
+    }
+    if FACILITATOR_CONFIG_FILE.exists():
+        try:
+            data = json.loads(FACILITATOR_CONFIG_FILE.read_text())
+            meta.update({
+                k: v for k, v in data.items()
+                if k in ("base_url", "model", "temperature", "top_p", "max_tokens", "extra_body")
+            })
+        except Exception:
+            pass
+    if keyring:
+        try:
+            meta["api_key"] = keyring.get_password(KEYRING_SERVICE, KEYRING_FACILITATOR_USERNAME)
+        except Exception:
+            meta["api_key"] = None
+    else:
+        meta["api_key"] = None
+    if not meta.get("api_key"):
+        fallback = load_meta_config()
+        if fallback.get("api_key"):
+            meta["api_key"] = fallback["api_key"]
+            if meta.get("source") == "persisted" and not FACILITATOR_CONFIG_FILE.exists():
+                meta["base_url"] = fallback.get("base_url", meta["base_url"])
+    _apply_facilitator_env_extras(meta)
+    return meta
+
+
+def _apply_meta_env_extras(cfg: dict[str, Any]) -> None:
+    """Optional provider-specific knobs (NVIDIA Nemotron, etc.) via env."""
+    if os.environ.get("TURINGOS_META_TEMPERATURE"):
+        cfg["temperature"] = float(os.environ["TURINGOS_META_TEMPERATURE"])
+    if os.environ.get("TURINGOS_META_TOP_P"):
+        cfg["top_p"] = float(os.environ["TURINGOS_META_TOP_P"])
+    if os.environ.get("TURINGOS_META_MAX_TOKENS"):
+        cfg["max_tokens"] = int(os.environ["TURINGOS_META_MAX_TOKENS"])
+    stream = os.environ.get("TURINGOS_META_STREAM", "").lower()
+    if stream in ("1", "true", "yes"):
+        cfg["stream"] = True
+    if os.environ.get("TURINGOS_META_EXTRA_BODY"):
+        try:
+            cfg["extra_body"] = json.loads(os.environ["TURINGOS_META_EXTRA_BODY"])
+        except Exception:
+            pass
+    base = cfg.get("base_url") or ""
+    if "nvidia.com" in base and "provider" not in cfg:
+        cfg["provider"] = "nvidia"
 
 
 def load_meta_config() -> dict[str, Any]:
@@ -68,12 +166,14 @@ def load_meta_config() -> dict[str, Any]:
     env_model = os.environ.get("TURINGOS_META_MODEL")
 
     if env_base or env_key or env_model:
-        return {
+        cfg: dict[str, Any] = {
             "base_url": env_base or "https://api.openai.com/v1",
             "api_key": env_key,
             "model": env_model or "gpt-4o-mini",
             "source": "env",
         }
+        _apply_meta_env_extras(cfg)
+        return cfg
 
     # Persisted metadata
     meta: dict[str, Any] = {
@@ -84,7 +184,10 @@ def load_meta_config() -> dict[str, Any]:
     if META_CONFIG_FILE.exists():
         try:
             data = json.loads(META_CONFIG_FILE.read_text())
-            meta.update({k: v for k, v in data.items() if k in ("base_url", "model")})
+            meta.update({
+                k: v for k, v in data.items()
+                if k in ("base_url", "model", "temperature", "top_p", "max_tokens", "extra_body")
+            })
         except Exception:
             pass  # fall back to defaults; errors surfaced as FailureNodes upstream
 
@@ -101,7 +204,149 @@ def load_meta_config() -> dict[str, Any]:
     return meta
 
 
-def save_meta_config(base_url: str | None = None, api_key: str | None = None, model: str | None = None) -> None:
+def save_facilitator_config(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    *,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+    extra_body: dict[str, Any] | None = None,
+) -> None:
+    """Persist Facilitator AI config (metadata JSON + keyring secret)."""
+    existing: dict[str, Any] = {}
+    if FACILITATOR_CONFIG_FILE.exists():
+        try:
+            existing = json.loads(FACILITATOR_CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    updated = {**existing}
+    if base_url is not None:
+        updated["base_url"] = base_url
+    if model is not None:
+        updated["model"] = model
+    if temperature is not None:
+        updated["temperature"] = temperature
+    if top_p is not None:
+        updated["top_p"] = top_p
+    if max_tokens is not None:
+        updated["max_tokens"] = max_tokens
+    if extra_body is not None:
+        updated["extra_body"] = extra_body
+    FACILITATOR_CONFIG_FILE.write_text(json.dumps(updated, indent=2))
+    try:
+        FACILITATOR_CONFIG_FILE.chmod(0o600)
+    except Exception:
+        pass
+    if api_key is not None and keyring:
+        try:
+            keyring.set_password(KEYRING_SERVICE, KEYRING_FACILITATOR_USERNAME, api_key)
+        except Exception:
+            pass
+
+
+def load_worker_config() -> dict[str, Any]:
+    """Worker API (whitebox `api` dispatch) — OpenAI-compatible broker."""
+    env_base = os.environ.get("TURINGOS_WORKER_BASE_URL")
+    env_key = os.environ.get("TURINGOS_WORKER_API_KEY")
+    env_model = os.environ.get("TURINGOS_WORKER_MODEL")
+
+    if env_base or env_key or env_model:
+        cfg: dict[str, Any] = {
+            "base_url": env_base or "https://api.openai.com/v1",
+            "api_key": env_key,
+            "model": env_model or "gpt-4o-mini",
+            "source": "env",
+            "worker": "api",
+        }
+        _apply_meta_env_extras(cfg)
+        return cfg
+
+    meta: dict[str, Any] = {
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "source": "persisted",
+        "worker": "api",
+    }
+    if WORKER_CONFIG_FILE.exists():
+        try:
+            data = json.loads(WORKER_CONFIG_FILE.read_text())
+            meta.update({
+                k: v for k, v in data.items()
+                if k in (
+                    "base_url", "model", "temperature", "top_p",
+                    "max_tokens", "extra_body", "provider_id",
+                )
+            })
+        except Exception:
+            pass
+    if keyring:
+        try:
+            meta["api_key"] = keyring.get_password(KEYRING_SERVICE, KEYRING_WORKER_USERNAME)
+        except Exception:
+            meta["api_key"] = None
+    else:
+        meta["api_key"] = None
+    _apply_meta_env_extras(meta)
+    return meta
+
+
+def save_worker_config(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    *,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+    extra_body: dict[str, Any] | None = None,
+    provider_id: str | None = None,
+) -> None:
+    """Persist Worker API config (metadata JSON + keyring secret)."""
+    existing: dict[str, Any] = {}
+    if WORKER_CONFIG_FILE.exists():
+        try:
+            existing = json.loads(WORKER_CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    updated = {**existing}
+    if base_url is not None:
+        updated["base_url"] = base_url
+    if model is not None:
+        updated["model"] = model
+    if temperature is not None:
+        updated["temperature"] = temperature
+    if top_p is not None:
+        updated["top_p"] = top_p
+    if max_tokens is not None:
+        updated["max_tokens"] = max_tokens
+    if extra_body is not None:
+        updated["extra_body"] = extra_body
+    if provider_id is not None:
+        updated["provider_id"] = provider_id
+    WORKER_CONFIG_FILE.write_text(json.dumps(updated, indent=2))
+    try:
+        WORKER_CONFIG_FILE.chmod(0o600)
+    except Exception:
+        pass
+    if api_key is not None and keyring:
+        try:
+            keyring.set_password(KEYRING_SERVICE, KEYRING_WORKER_USERNAME, api_key)
+        except Exception:
+            pass
+
+
+def save_meta_config(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    *,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+    extra_body: dict[str, Any] | None = None,
+) -> None:
     """Persist Meta AI config securely.
 
     - Non-secrets (base_url, model) -> XDG JSON (0600).
@@ -122,6 +367,14 @@ def save_meta_config(base_url: str | None = None, api_key: str | None = None, mo
         updated["base_url"] = base_url
     if model is not None:
         updated["model"] = model
+    if temperature is not None:
+        updated["temperature"] = temperature
+    if top_p is not None:
+        updated["top_p"] = top_p
+    if max_tokens is not None:
+        updated["max_tokens"] = max_tokens
+    if extra_body is not None:
+        updated["extra_body"] = extra_body
 
     # Write non-secret metadata (restrictive perms)
     META_CONFIG_FILE.write_text(json.dumps(updated, indent=2))
@@ -132,7 +385,10 @@ def save_meta_config(base_url: str | None = None, api_key: str | None = None, mo
 
     # Secret to keyring (the secure substrate) -- only if available
     if api_key is not None and keyring:
-        keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+        try:
+            keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+        except Exception:
+            pass
     elif api_key is not None:
         # Fallback note (user should use env); do not write secret to file
         pass
