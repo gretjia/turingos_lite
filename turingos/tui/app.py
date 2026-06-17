@@ -92,8 +92,9 @@ class TuiApp(App):
     #delivery-banner { display: none; height: 5; background: #0d2818; border: solid #238636; margin: 0 1; padding: 1; text-align: center; }
     Button.success { background: #238636; }
     Button.error { background: #da3633; }
-    #composer-row { height: auto; min-height: 8; }
-    #vibe-input { width: 1fr; height: 3; min-height: 2; border: solid #30363d; }
+    #composer-row { height: auto; min-height: 10; }
+    #vibe-input { width: 1fr; height: 8; min-height: 8; border: solid #30363d; }
+    #transcribe-btn { width: 16; height: 8; min-height: 8; }
     #chat-thread { height: 4; max-height: 5; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
     #composer-hint { height: 1; margin-bottom: 1; }
     #composer-body { height: 1fr; min-height: 10; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
@@ -112,11 +113,17 @@ class TuiApp(App):
     .compact #left-pane, .compact #right-col, .compact #autonomy-row { display: none; }
     .compact #center-pane { width: 1fr; border-right: none; }
     .compact #composer-hint { display: none; }
+    .compact #composer-row { min-height: 6; }
+    .compact #vibe-input { height: 5; min-height: 5; }
+    .compact #transcribe-btn { height: 5; min-height: 5; width: 10; }
     .compact #chat-thread { display: none; }
     .compact #preview-md { max-height: 5; }
     .compact #top-bar { height: 1; }
     .focus #left-pane, .focus #right-col, .focus #autonomy-row { display: none; }
     .focus #center-pane { width: 1fr; border-right: none; }
+    .focus #composer-row { min-height: 10; }
+    .focus #vibe-input { height: 8; min-height: 8; }
+    .focus #transcribe-btn { height: 8; min-height: 8; }
     .focus #chat-thread { height: 5; }
     .focus #composer-body { min-height: 16; }
     .wide #left-pane { width: 30%; }
@@ -823,6 +830,37 @@ class TuiApp(App):
     def on_evidence_pane_replay_pressed(self, _event: EvidencePane.ReplayPressed) -> None:
         self.action_replay()
 
+    def _loop_guidance_turn(self, loop: str) -> dict:
+        labels = {
+            "goal": "目标设定",
+            "set": "配置/准备",
+            "orchestrate": "编排下一步",
+            "execute": "执行",
+            "verify": "验证",
+        }
+        title = labels.get(loop, loop)
+        return {
+            "turn_type": "clarify",
+            "summary": (
+                f"**{title}**\n\n"
+                "当前没有卡死：你可以直接在上方输入框描述目标，也可以点下面按钮回到主流程。"
+                "如果已经写了一段需求，点 Send 会立即发送给 Facilitator。"
+            ),
+            "choices": [
+                {"id": "explore", "label": "扫描项目背景", "hint": "重新读取 README/git 状态"},
+                {"id": "task", "label": "我有具体任务", "hint": "输入需求后提交"},
+                {"id": "ai_setup", "label": "配置 AI / Worker", "skill_id": "setup-meta-ai-openai"},
+                {
+                    "id": "other",
+                    "label": "其他需求（自行输入）",
+                    "select_action": "freeform",
+                    "input_prompt": "请在上方大输入框输入你的完整需求，然后点 Send。",
+                },
+            ],
+            "proposals": [],
+            "facilitator_note": "右侧 loop 按钮不会写 tape；只有提交/Approve 后才写入。",
+        }
+
     def on_next_action_pane_loop_pressed(
         self, event: NextActionPane.LoopPressed
     ) -> None:
@@ -831,6 +869,9 @@ class TuiApp(App):
         if event.loop == "execute" and self.pending_proposals:
             if self.autonomy >= 50 or self.headless:
                 self._approve_proposals()
+                self.refresh_projection()
+                return
+        self._apply_facilitator_turn(self._loop_guidance_turn(event.loop))
         self.refresh_projection()
 
     def _set_autonomy(self, val: int) -> None:

@@ -189,7 +189,7 @@ class VibeComposerPane(Vertical):
         elif field == "base_url":
             inp.placeholder = "https://api.example.com/v1"
         elif field == "model":
-            inp.placeholder = "model 名称，例如 deepseek-chat"
+            inp.placeholder = "model 名称，例如 deepseek-v4-flash"
         else:
             inp.placeholder = f"输入 {field}"
         inp.value = ""
@@ -342,8 +342,6 @@ class VibeComposerPane(Vertical):
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if not self._choices_ready:
-            return
         bid = event.button.id or ""
         if bid.startswith("mcq-"):
             cid = bid[4:]
