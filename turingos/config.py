@@ -104,7 +104,10 @@ def load_facilitator_config() -> dict[str, Any]:
     if FACILITATOR_CONFIG_FILE.exists():
         try:
             data = json.loads(FACILITATOR_CONFIG_FILE.read_text())
-            meta.update({k: v for k, v in data.items() if k in ("base_url", "model", "temperature", "top_p", "max_tokens")})
+            meta.update({
+                k: v for k, v in data.items()
+                if k in ("base_url", "model", "temperature", "top_p", "max_tokens", "extra_body")
+            })
         except Exception:
             pass
     if keyring:
@@ -179,7 +182,10 @@ def load_meta_config() -> dict[str, Any]:
     if META_CONFIG_FILE.exists():
         try:
             data = json.loads(META_CONFIG_FILE.read_text())
-            meta.update({k: v for k, v in data.items() if k in ("base_url", "model")})
+            meta.update({
+                k: v for k, v in data.items()
+                if k in ("base_url", "model", "temperature", "top_p", "max_tokens", "extra_body")
+            })
         except Exception:
             pass  # fall back to defaults; errors surfaced as FailureNodes upstream
 
@@ -200,6 +206,11 @@ def save_facilitator_config(
     base_url: str | None = None,
     api_key: str | None = None,
     model: str | None = None,
+    *,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+    extra_body: dict[str, Any] | None = None,
 ) -> None:
     """Persist Facilitator AI config (metadata JSON + keyring secret)."""
     existing: dict[str, Any] = {}
@@ -213,16 +224,36 @@ def save_facilitator_config(
         updated["base_url"] = base_url
     if model is not None:
         updated["model"] = model
+    if temperature is not None:
+        updated["temperature"] = temperature
+    if top_p is not None:
+        updated["top_p"] = top_p
+    if max_tokens is not None:
+        updated["max_tokens"] = max_tokens
+    if extra_body is not None:
+        updated["extra_body"] = extra_body
     FACILITATOR_CONFIG_FILE.write_text(json.dumps(updated, indent=2))
     try:
         FACILITATOR_CONFIG_FILE.chmod(0o600)
     except Exception:
         pass
     if api_key is not None and keyring:
-        keyring.set_password(KEYRING_SERVICE, KEYRING_FACILITATOR_USERNAME, api_key)
+        try:
+            keyring.set_password(KEYRING_SERVICE, KEYRING_FACILITATOR_USERNAME, api_key)
+        except Exception:
+            pass
 
 
-def save_meta_config(base_url: str | None = None, api_key: str | None = None, model: str | None = None) -> None:
+def save_meta_config(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    *,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+    extra_body: dict[str, Any] | None = None,
+) -> None:
     """Persist Meta AI config securely.
 
     - Non-secrets (base_url, model) -> XDG JSON (0600).
@@ -243,6 +274,14 @@ def save_meta_config(base_url: str | None = None, api_key: str | None = None, mo
         updated["base_url"] = base_url
     if model is not None:
         updated["model"] = model
+    if temperature is not None:
+        updated["temperature"] = temperature
+    if top_p is not None:
+        updated["top_p"] = top_p
+    if max_tokens is not None:
+        updated["max_tokens"] = max_tokens
+    if extra_body is not None:
+        updated["extra_body"] = extra_body
 
     # Write non-secret metadata (restrictive perms)
     META_CONFIG_FILE.write_text(json.dumps(updated, indent=2))
@@ -253,7 +292,10 @@ def save_meta_config(base_url: str | None = None, api_key: str | None = None, mo
 
     # Secret to keyring (the secure substrate) -- only if available
     if api_key is not None and keyring:
-        keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+        try:
+            keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+        except Exception:
+            pass
     elif api_key is not None:
         # Fallback note (user should use env); do not write secret to file
         pass

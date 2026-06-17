@@ -75,6 +75,35 @@ def test_pilot_boot_shows_cognition(e2e_data):
     asyncio.run(drive())
 
 
+def test_pilot_config_api_key_panel_visible(e2e_data):
+    """Clicking API Key MCQ must reveal inline input below choices."""
+    pid = "e2e_cfg_key"
+    _boot_tape(pid, e2e_data)
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=e2e_data, force_mock_facilitator=True)
+        async with app.run_test(size=E2E_SIZE) as pilot:
+            await _wait_facilitator_idle(app, pilot)
+            await _pilot_click_choice(app, pilot, "ai_setup")
+            await _wait_facilitator_idle(app, pilot)
+            await _pilot_click_choice(app, pilot, "skill_openai")
+            await _wait_facilitator_idle(app, pilot)
+            await _pilot_click_choice(app, pilot, "cfg_input_base")
+            await _wait_facilitator_idle(app, pilot)
+            composer = app.query_one("#center-pane", VibeComposerPane)
+            cfg_inp = composer.query_one("#config-input")
+            cfg_inp.value = "https://api.deepseek.com/v1"
+            await pilot.click("#config-input-btn")
+            await _wait_facilitator_idle(app, pilot)
+            await _pilot_click_choice(app, pilot, "cfg_input_key")
+            await _wait_facilitator_idle(app, pilot)
+            panel = composer.query_one("#config-input-panel")
+            assert panel.display is True
+            assert composer.query_one("#config-input").password is True
+
+    asyncio.run(drive())
+
+
 def test_pilot_click_ai_setup_opens_wizard(e2e_data):
     pid = "e2e_cfg"
     _boot_tape(pid, e2e_data)

@@ -136,13 +136,20 @@ class VibeComposerPane(Vertical):
             self.choice = choice
             super().__init__()
 
+    class ConfigInputPressed(Message):
+        def __init__(self, text: str, field: str) -> None:
+            self.text = text
+            self.field = field
+            super().__init__()
+
     preview_md = reactive("")
     _choices_ready = True
+    _config_input_field: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("★ VIBE COMPOSER", classes="pane-title vibe-title")
         yield Static(
-            "[dim]输入区（多行）— 可问项目问题或粘贴 API token[/]",
+            "[dim]输入区（多行）— 可粘贴 NVIDIA/DeepSeek 官网示例代码整段，点 Send 自动识别[/]",
             id="composer-hint",
         )
         with Horizontal(id="composer-row"):
@@ -151,12 +158,53 @@ class VibeComposerPane(Vertical):
         yield VerticalScroll(id="chat-thread")
         yield Markdown("", id="preview-md")
         yield Vertical(id="choice-bar")
+        with Vertical(id="config-input-panel"):
+            yield Static("", id="config-input-hint")
+            with Horizontal(id="config-input-row"):
+                yield Input(placeholder="", id="config-input")
+                yield Button("保存", id="config-input-btn", variant="primary")
         yield Static("", id="tape-preview")
         with Horizontal(id="action-row"):
             yield Button("Refine", id="refine-btn")
             yield Button("Approve", id="approve-btn", variant="success")
             yield Button("Edit", id="edit-btn")
             yield Button("Reject", id="reject-btn", variant="error")
+
+    def on_mount(self) -> None:
+        self.hide_config_input()
+
+    def show_config_input(self, *, field: str, prompt: str) -> None:
+        """Reveal inline config field directly under MCQ (wizard api_key etc.)."""
+        self._config_input_field = field
+        panel = self.query_one("#config-input-panel")
+        panel.display = True
+        self.query_one("#config-input-hint", Static).update(
+            f"[bold #58a6ff]→ {prompt}[/]"
+        )
+        inp = self.query_one("#config-input", Input)
+        inp.password = field == "api_key"
+        if field == "api_key":
+            inp.placeholder = "粘贴 API Key（keyring 安全存储，不会写入日志）"
+        elif field == "base_url":
+            inp.placeholder = "https://api.example.com/v1"
+        elif field == "model":
+            inp.placeholder = "model 名称，例如 deepseek-chat"
+        else:
+            inp.placeholder = f"输入 {field}"
+        inp.value = ""
+        self.query_one("#composer-hint", Static).update(
+            "[bold]配置向导[/] — 在 MCQ 下方输入框填写后点「保存」"
+        )
+        self.call_after_refresh(lambda: inp.focus())
+
+    def hide_config_input(self) -> None:
+        self._config_input_field = None
+        try:
+            panel = self.query_one("#config-input-panel")
+            panel.display = False
+            self.query_one("#config-input", Input).value = ""
+        except Exception:
+            pass
 
     def append_chat(self, role: str, content: str) -> None:
         thread = self.query_one("#chat-thread", VerticalScroll)
@@ -272,6 +320,10 @@ class VibeComposerPane(Vertical):
         elif bid == "transcribe-btn":
             text = self.query_one("#vibe-input", VibeInput).value
             self.post_message(self.TranscribePressed(text))
+        elif bid == "config-input-btn":
+            field = self._config_input_field or "api_key"
+            text = self.query_one("#config-input", Input).value
+            self.post_message(self.ConfigInputPressed(text, field))
         elif bid == "approve-btn":
             self.post_message(self.ApprovePressed())
         elif bid == "refine-btn":

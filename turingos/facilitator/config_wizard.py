@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from turingos.config import load_facilitator_config, load_meta_config, save_meta_config
+from turingos.facilitator.provider_setup import parse_provider_paste
 from turingos.facilitator.schema import normalize_turn
 
 CONFIG_TARGET_IDS = frozenset({
@@ -120,12 +121,22 @@ def _save_draft(draft: dict) -> str:
     base = draft.get("base_url")
     model = draft.get("model")
     key = draft.get("api_key")
+    extras = draft.get("_extras") or {}
+    save_kw = {
+        "base_url": base,
+        "api_key": key,
+        "model": model,
+        "temperature": extras.get("temperature"),
+        "top_p": extras.get("top_p"),
+        "max_tokens": extras.get("max_tokens"),
+        "extra_body": extras.get("extra_body"),
+    }
     if kind == "meta":
-        save_meta_config(base_url=base, api_key=key, model=model)
+        save_meta_config(**save_kw)
         return "Meta AI"
     from turingos.config import save_facilitator_config
 
-    save_facilitator_config(base_url=base, api_key=key, model=model)
+    save_facilitator_config(**save_kw)
     return "Facilitator"
 
 
@@ -185,7 +196,7 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
             "label": "自行输入 Base URL",
             "select_action": "config_input",
             "config_field": "base_url",
-            "input_prompt": f"输入 {title} 的 Base URL，然后点 Transcribe",
+            "input_prompt": f"输入 {title} 的 Base URL，然后点「保存」",
         })
         return normalize_turn({
             "turn_type": "clarify",
@@ -207,7 +218,7 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
                 "label": "输入 API Key（keyring 安全存储）",
                 "select_action": "config_input",
                 "config_field": "api_key",
-                "input_prompt": f"粘贴 {title} 的 API Key，然后点 Transcribe（不会显示在日志）",
+                "input_prompt": f"粘贴 {title} 的 API Key，然后点「保存」（keyring，不会显示在日志）",
             },
         ]
         if "已配置" in key_status:
@@ -223,7 +234,8 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
                 f"**{title}** — 步骤 2/3：API Key\n\n"
                 f"Base URL：`{draft.get('base_url', '')}`\n"
                 f"当前 Key：{key_status}\n\n"
-                "在下方输入框粘贴 Key，点 **Transcribe** 保存到 keyring。"
+                "可直接在顶部 VIBE COMPOSER **整段粘贴 NVIDIA 官网示例代码** 后点 Send（自动识别）；"
+                "或点「输入 API Key」后在 MCQ 下方输入框粘贴 Key 点 **保存**。"
             ),
             "choices": choices,
             "skill_id": draft.get("skill_id"),
@@ -246,7 +258,7 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
             "label": "自行输入 Model 名称",
             "select_action": "config_input",
             "config_field": "model",
-            "input_prompt": f"输入 {title} 的 model 名称，然后点 Transcribe",
+            "input_prompt": f"输入 {title} 的 model 名称，然后点「保存」",
         })
         return normalize_turn({
             "turn_type": "clarify",
@@ -349,8 +361,28 @@ def run_config_wizard(
         return _step_turn(draft), draft
 
     if select_action == "config_input" or selected_choice_id == "cfg_input":
-        field = draft.get("_pending_field") or ch.get("config_field") or "base_url"
         val = (user_text or "").strip()
+        parsed = parse_provider_paste(val) if val else {}
+        is_snippet = (
+            parsed.get("parsed")
+            and parsed.get("api_key")
+            and (parsed.get("base_url") or parsed.get("model") or len(val) > 80)
+        )
+        if is_snippet:
+            if parsed.get("base_url"):
+                draft["base_url"] = parsed["base_url"]
+            if parsed.get("model"):
+                draft["model"] = parsed["model"]
+            draft["api_key"] = parsed["api_key"]
+            draft["_extras"] = {
+                k: parsed.get(k)
+                for k in ("temperature", "top_p", "max_tokens", "extra_body")
+                if parsed.get(k) is not None
+            }
+            draft["_pending_field"] = None
+            draft["step"] = "confirm"
+            return _step_turn(draft), draft
+        field = draft.get("_pending_field") or ch.get("config_field") or "base_url"
         if val:
             draft[field] = val
             draft["_pending_field"] = None

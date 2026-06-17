@@ -96,6 +96,10 @@ class TuiApp(App):
     #vibe-input { width: 1fr; height: 7; min-height: 5; border: solid #30363d; }
     #chat-thread { height: 10; max-height: 12; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
     #composer-hint { height: 1; margin-bottom: 1; }
+    #config-input-panel { height: auto; border: solid #388bfd; padding: 1; margin: 1 0; background: #161b22; }
+    #config-input-row { height: auto; min-height: 3; }
+    #config-input { width: 1fr; height: 3; min-height: 3; border: solid #58a6ff; }
+    #config-input-hint { height: auto; min-height: 1; margin-bottom: 1; }
     """
 
     BINDINGS = [
@@ -486,6 +490,11 @@ class TuiApp(App):
             elif turn.get("config_draft") is None and turn.get("wizard_mode"):
                 if selected_choice_id in ("cfg_back_menu", "ai_setup") or select_action == "cfg_back_menu":
                     self.config_draft = None
+            if not self.awaiting_config_field:
+                try:
+                    self.query_one("#center-pane", VibeComposerPane).hide_config_input()
+                except Exception:
+                    pass
             self._apply_facilitator_turn(turn, user_message=user_text)
             self.last_action = f"facilitator:{turn.get('turn_type')}"
             if user_text and turn.get("setup_result", {}).get("ok"):
@@ -538,13 +547,16 @@ class TuiApp(App):
             self._navigate_turn_history(1)
             return
         if action == "config_input" or ch.get("config_field"):
-            self.awaiting_config_field = ch.get("config_field")
+            field = ch.get("config_field") or "api_key"
+            self.awaiting_config_field = field
+            prompt = ch.get(
+                "input_prompt",
+                "粘贴 API Key，然后点保存（keyring 安全存储）",
+            )
             try:
-                inp = self.query_one("#center-pane #vibe-input", VibeInput)
-                inp.placeholder = ch.get(
-                    "input_prompt", "输入配置值后点 Send"
-                )
-                self.last_action = f"config input: {self.awaiting_config_field}"
+                composer = self.query_one("#center-pane", VibeComposerPane)
+                composer.show_config_input(field=field, prompt=prompt)
+                self.last_action = f"config input: {field} — use panel below MCQ"
                 self.refresh_projection()
             except Exception:
                 pass
@@ -582,6 +594,29 @@ class TuiApp(App):
             choice=ch,
         ))
 
+    def on_vibe_composer_pane_config_input_pressed(
+        self, event: VibeComposerPane.ConfigInputPressed
+    ) -> None:
+        text = event.text.strip()
+        if not text:
+            return
+        self.awaiting_config_field = event.field
+        try:
+            composer = self.query_one("#center-pane", VibeComposerPane)
+            composer.query_one("#config-input", Input).value = ""
+        except Exception:
+            pass
+        asyncio.create_task(self._facilitator_run(
+            user_text=text,
+            selected_choice_id="cfg_input",
+            select_action="config_input",
+        ))
+        self.awaiting_config_field = None
+        try:
+            self.query_one("#center-pane", VibeComposerPane).hide_config_input()
+        except Exception:
+            pass
+
     def on_vibe_composer_pane_transcribe_pressed(
         self, event: VibeComposerPane.TranscribePressed
     ) -> None:
@@ -594,6 +629,16 @@ class TuiApp(App):
             inp.value = ""
         except Exception:
             pass
+        from turingos.facilitator.provider_setup import is_provider_paste
+
+        if self.config_draft and is_provider_paste(text):
+            asyncio.create_task(self._facilitator_run(user_text=text))
+            self.awaiting_config_field = None
+            try:
+                self.query_one("#center-pane", VibeComposerPane).hide_config_input()
+            except Exception:
+                pass
+            return
         if self.awaiting_config_field or self.config_draft:
             asyncio.create_task(self._facilitator_run(
                 user_text=text,
@@ -601,6 +646,10 @@ class TuiApp(App):
                 select_action="config_input",
             ))
             self.awaiting_config_field = None
+            try:
+                self.query_one("#center-pane", VibeComposerPane).hide_config_input()
+            except Exception:
+                pass
             return
         asyncio.create_task(self._facilitator_run(
             user_text=text,

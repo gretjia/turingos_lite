@@ -92,7 +92,8 @@ def mock_facilitate_turn(
     text = (user_text or "").lower()
 
     if user_text and not selected_choice_id and not select_action:
-        setup = auto_setup_turn(user_text, role="meta", force_mock_test=True)
+        role = "facilitator" if (config_draft or {}).get("kind") == "facilitator" else "meta"
+        setup = auto_setup_turn(user_text, role=role, force_mock_test=True)
         if setup:
             return setup
         if is_project_question(user_text):
@@ -362,14 +363,18 @@ def facilitate_turn(
 ) -> dict[str, Any]:
     if select_action == "skip" or selected_choice_id == "skip":
         return continue_after_skip_turn(project_brief, session_turns)
-    if user_text and not selected_choice_id and not select_action and not boot:
+    if user_text and not boot:
+        role = "meta"
+        if config_draft:
+            role = "facilitator" if config_draft.get("kind") == "facilitator" else "meta"
         setup = auto_setup_turn(
-            user_text, role="meta", force_mock_test=force_mock,
+            user_text, role=role, force_mock_test=force_mock,
         )
         if setup:
             return setup
-        if is_project_question(user_text):
-            return answer_project_question(user_text, project_brief)
+        if not selected_choice_id and not select_action:
+            if is_project_question(user_text):
+                return answer_project_question(user_text, project_brief)
     if is_config_flow(
         config_draft=config_draft,
         selected_choice_id=selected_choice_id,
