@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from turingos.config import load_facilitator_config
+from turingos.facilitator.config_wizard import is_config_flow, run_config_wizard
 from turingos.facilitator.project_brief import format_project_cognition
 from turingos.facilitator.schema import (
     OTHER_CHOICE,
@@ -61,7 +62,7 @@ def continue_after_skip_turn(
         "choices": [
             {"id": "explore_confirm", "label": "开始扫描并汇报项目背景", "hint": "只读探索 capsule"},
             {"id": "task", "label": "我有具体任务要说", "hint": "自由输入或「其他需求」"},
-            {"id": "config", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
+            {"id": "ai_setup", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
         ],
         "proposals": [],
         "facilitator_note": note,
@@ -77,6 +78,8 @@ def mock_facilitate_turn(
     project_brief: dict | None = None,
     session_turns: list[dict] | None = None,
     boot: bool = False,
+    config_draft: dict | None = None,
+    choice: dict | None = None,
 ) -> dict[str, Any]:
     """Deterministic facilitator for tests and offline use."""
     pid = (project_brief or {}).get("project_id", "demo_app")
@@ -101,29 +104,55 @@ def mock_facilitate_turn(
             "facilitator_note": "请 Approve 写入 tape。",
         })
 
-    if selected_choice_id == "explore" or "explore" in (selected_choice_id or ""):
+    if selected_choice_id == "explore":
         return normalize_turn({
             "turn_type": "clarify",
             "summary": "你想先读懂已有项目（git 历史、目录、README），再决定任务。",
             "choices": [
                 {"id": "explore_confirm", "label": "开始扫描项目背景", "hint": "adopt + macro observe + 探索 capsule"},
-                {"id": "config", "label": "先配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
+                {"id": "ai_setup", "label": "先配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
             ],
             "proposals": [],
         })
 
-    if selected_choice_id == "config" or "config" in text or "meta" in text or "api" in text:
+    if is_config_flow(
+        config_draft=config_draft,
+        selected_choice_id=selected_choice_id,
+        select_action=select_action,
+    ):
+        turn, _draft = run_config_wizard(
+            config_draft=config_draft,
+            selected_choice_id=selected_choice_id,
+            select_action=select_action,
+            user_text=user_text,
+            choice=choice,
+        )
+        return turn
+
+    if selected_choice_id and selected_choice_id.startswith("worker_"):
+        skill_map = {
+            "worker_codex": "setup-worker-codex-oauth",
+            "worker_claude": "setup-worker-claude-cli",
+            "worker_grok": "setup-worker-grok-build",
+        }
+        sid = skill_map.get(selected_choice_id, "setup-worker-codex-oauth")
+        doc = _load_skill(sid)
         return normalize_turn({
             "turn_type": "clarify",
-            "summary": "需要配置模型：Facilitator（对话）、Meta AI（提案）、Worker（执行）。",
+            "wizard_mode": True,
+            "summary": f"**Worker 说明**\n\n{doc[:1200]}",
             "choices": [
-                {"id": "skill_nvidia", "label": "配置 Facilitator（NVIDIA Diffusion Gemma）", "skill_id": "setup-facilitator-nvidia"},
-                {"id": "skill_openai", "label": "配置 Meta AI（OpenAI 格式）", "skill_id": "setup-meta-ai-openai"},
-                {"id": "skill_worker", "label": "配置 Worker（Codex / Claude / Grok）", "skill_id": "setup-worker-codex-oauth"},
+                {"id": "skill_worker", "label": "← 退回 Worker 列表"},
+                {"id": "cfg_back_menu", "label": "← 退回配置菜单", "select_action": "cfg_back_menu"},
             ],
-            "proposals": [],
-            "skill_id": "setup-meta-ai-openai",
+            "skill_id": sid,
         })
+
+    if selected_choice_id == "ai_setup" or (
+        not config_draft and ("config" in text or "meta" in text or "api" in text)
+    ):
+        turn, _ = run_config_wizard(selected_choice_id="ai_setup")
+        return turn
 
     if select_action == "skip" or selected_choice_id == "skip":
         return continue_after_skip_turn(brief, session_turns)
@@ -145,7 +174,7 @@ def mock_facilitate_turn(
             "choices": [
                 {"id": "explore", "label": "扫描并理解这个项目", "hint": "读取 README、目录、最近 commit"},
                 {"id": "task", "label": "我有具体任务要说", "hint": "在下方输入或选「其他需求」"},
-                {"id": "config", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
+                {"id": "ai_setup", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
             ],
             "proposals": [],
             "facilitator_note": "冷静副驾驶：点选项即可，不必记命令。",
@@ -189,7 +218,7 @@ def mock_facilitate_turn(
         "summary": f"理解：{user_text[:200] or '等待你的说明'}",
         "choices": [
             {"id": "explore", "label": "先理解当前项目", "hint": "探索"},
-            {"id": "config", "label": "配置 AI / Worker", "skill_id": "setup-meta-ai-openai"},
+            {"id": "ai_setup", "label": "配置 AI / Worker", "skill_id": "setup-meta-ai-openai"},
         ],
         "proposals": [],
     })
@@ -247,7 +276,7 @@ def mock_enrich_turn(last_mid: str) -> dict[str, Any]:
         "choices": [
             {"id": "url", "label": "粘贴 URL（抓取摘要，需确认）", "select_action": "freeform"},
             {"id": "paste", "label": "粘贴文本/文档片段", "select_action": "freeform"},
-            {"id": "config", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
+            {"id": "ai_setup", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
             {"id": "skip", "label": "不需要，继续", "select_action": "skip"},
             dict(OTHER_CHOICE),
         ],
@@ -316,9 +345,24 @@ def facilitate_turn(
     boot: bool = False,
     force_mock: bool = False,
     config: dict[str, Any] | None = None,
+    config_draft: dict | None = None,
+    choice: dict | None = None,
 ) -> dict[str, Any]:
     if select_action == "skip" or selected_choice_id == "skip":
         return continue_after_skip_turn(project_brief, session_turns)
+    if is_config_flow(
+        config_draft=config_draft,
+        selected_choice_id=selected_choice_id,
+        select_action=select_action,
+    ):
+        turn, _ = run_config_wizard(
+            config_draft=config_draft,
+            selected_choice_id=selected_choice_id,
+            select_action=select_action,
+            user_text=user_text,
+            choice=choice,
+        )
+        return turn
     cfg = config or load_facilitator_config()
     if force_mock or not cfg.get("api_key"):
         return mock_facilitate_turn(
@@ -328,6 +372,8 @@ def facilitate_turn(
             project_brief=project_brief,
             session_turns=session_turns,
             boot=boot,
+            config_draft=config_draft,
+            choice=choice,
         )
     skill_id = None
     if session_turns:
@@ -346,4 +392,6 @@ def facilitate_turn(
             project_brief=project_brief,
             session_turns=session_turns,
             boot=boot,
+            config_draft=config_draft,
+            choice=choice,
         )

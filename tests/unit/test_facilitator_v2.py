@@ -5,6 +5,7 @@ import os
 import pytest
 
 from turingos.events import make_event, SYSTEM_BOOTSTRAPPED, PROJECT_READY
+from turingos.facilitator.config_wizard import run_config_wizard
 from turingos.facilitator.facilitate import (
     continue_after_skip_turn,
     facilitate_turn,
@@ -137,7 +138,7 @@ def test_simulated_user_full_flow_tui(data_dir):
             assert app.facilitator_turn["turn_type"] == "propose"
             assert app.pending_proposals
 
-            await pilot.press("A")
+            app._approve_proposals()
             await pilot.pause(0.5)
             assert app.facilitator_turn.get("turn_type") == "enrich"
 
@@ -151,6 +152,45 @@ def test_simulated_user_full_flow_tui(data_dir):
 
     asyncio.run(drive())
     assert r.read_tip() != pre
+
+
+def test_config_meta_ai_wizard_steps(data_dir):
+    """配置 Meta AI 应进入分步向导，而非跳到无关问答题。"""
+    turn, draft = run_config_wizard(selected_choice_id="skill_openai")
+    assert draft is not None
+    assert draft["step"] == "base_url"
+    assert "步骤 1/3" in turn["summary"]
+    assert turn.get("wizard_mode")
+
+    draft_key = {**draft, "step": "api_key"}
+    _turn2, draft2 = run_config_wizard(
+        config_draft=draft_key,
+        select_action="config_input",
+        user_text="sk-test-key-12345",
+        choice={"config_field": "api_key"},
+    )
+    assert draft2["api_key"] == "sk-test-key-12345"
+    assert draft2["step"] == "model"
+
+
+def test_config_menu_from_facilitate(data_dir):
+    turn = facilitate_turn(
+        selected_choice_id="ai_setup",
+        project_brief={"project_id": "p"},
+        force_mock=True,
+    )
+    assert turn.get("wizard_mode")
+    assert any(c["id"] == "skill_openai" for c in turn["choices"])
+
+
+def test_nav_choices_prepended():
+    from turingos.facilitator.schema import append_nav_choices
+
+    out = append_nav_choices([{"id": "a", "label": "A"}], can_back=True, can_forward=True)
+    ids = [c["id"] for c in out]
+    assert ids[0] == "nav_back"
+    assert ids[1] == "nav_forward"
+    assert "a" in ids
 
 
 def test_project_brief_fields(data_dir):

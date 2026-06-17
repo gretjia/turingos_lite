@@ -196,6 +196,32 @@ def load_meta_config() -> dict[str, Any]:
     return meta
 
 
+def save_facilitator_config(
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+) -> None:
+    """Persist Facilitator AI config (metadata JSON + keyring secret)."""
+    existing: dict[str, Any] = {}
+    if FACILITATOR_CONFIG_FILE.exists():
+        try:
+            existing = json.loads(FACILITATOR_CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    updated = {**existing}
+    if base_url is not None:
+        updated["base_url"] = base_url
+    if model is not None:
+        updated["model"] = model
+    FACILITATOR_CONFIG_FILE.write_text(json.dumps(updated, indent=2))
+    try:
+        FACILITATOR_CONFIG_FILE.chmod(0o600)
+    except Exception:
+        pass
+    if api_key is not None and keyring:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_FACILITATOR_USERNAME, api_key)
+
+
 def save_meta_config(base_url: str | None = None, api_key: str | None = None, model: str | None = None) -> None:
     """Persist Meta AI config securely.
 

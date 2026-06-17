@@ -21,6 +21,7 @@ from turingos.config import load_facilitator_config, load_meta_config, save_meta
 from turingos.events import make_event
 from turingos.facilitator.facilitate import facilitate_turn, mock_enrich_turn
 from turingos.facilitator.project_brief import build_project_brief, format_project_cognition
+from turingos.facilitator.schema import append_nav_choices
 from turingos.micro.reducer import reduce_state
 from turingos.micro.rtool import MicroRtool
 from turingos.micro.wtool import append as wtool_append
@@ -139,6 +140,10 @@ class TuiApp(App):
         self.session_turns: list[dict] = []
         self.project_brief: dict = {}
         self.awaiting_freeform = False
+        self.awaiting_config_field: str | None = None
+        self.config_draft: dict | None = None
+        self.turn_history: list[dict] = []
+        self.history_index: int = -1
         self.refine_context: str | None = None
         self.loop_progress = 0
         self.delivered = False
@@ -308,7 +313,15 @@ class TuiApp(App):
         if self.pending_proposals:
             next_text += f"\n[pending {len(self.pending_proposals)} proposals — Approve]"
         elif tt == "clarify":
-            next_text += "\n[pick a choice;「可以提交」→ Approve;「其他需求」→ 输入]"
+            nav = ""
+            if self.history_index > 0:
+                nav += " ←退回"
+            if self.history_index < len(self.turn_history) - 1:
+                nav += " 下一题→"
+            if self.config_draft:
+                next_text += f"\n[配置向导 {self.config_draft.get('step', '?')}{nav}]"
+            else:
+                next_text += f"\n[pick choice; submit→Approve; other→输入{nav}]"
         elif tt == "enrich":
             next_text += "\n[optional enrich — skip continues with cognition report]"
         try:
@@ -351,16 +364,70 @@ class TuiApp(App):
     def _should_auto_approve(self) -> bool:
         return self.autonomy >= 100 and bool(self.pending_proposals)
 
-    def _apply_facilitator_turn(self, turn: dict) -> None:
+    def _snapshot_turn(self, turn: dict) -> dict:
+        return {
+            "turn": dict(turn),
+            "config_draft": dict(self.config_draft) if self.config_draft else None,
+        }
+
+    def _push_turn_history(self, turn: dict) -> None:
+        snap = self._snapshot_turn(turn)
+        if self.history_index < len(self.turn_history) - 1:
+            self.turn_history = self.turn_history[: self.history_index + 1]
+        self.turn_history.append(snap)
+        self.history_index = len(self.turn_history) - 1
+
+    def _restore_history_index(self, index: int) -> None:
+        if index < 0 or index >= len(self.turn_history):
+            return
+        snap = self.turn_history[index]
+        self.history_index = index
+        self.config_draft = (
+            dict(snap["config_draft"]) if snap.get("config_draft") else None
+        )
+        self._apply_facilitator_turn(snap["turn"], record_history=False)
+
+    def _navigate_turn_history(self, delta: int) -> None:
+        target = self.history_index + delta
+        if 0 <= target < len(self.turn_history):
+            self._restore_history_index(target)
+            self.last_action = f"nav:{'back' if delta < 0 else 'forward'} → {target + 1}/{len(self.turn_history)}"
+            self.refresh_projection()
+
+    def _turn_with_nav(self, turn: dict) -> dict:
+        if turn.get("turn_type") != "clarify":
+            return dict(turn)
+        out = dict(turn)
+        can_back = self.history_index > 0
+        can_forward = self.history_index < len(self.turn_history) - 1
+        out["choices"] = append_nav_choices(
+            turn.get("choices") or [],
+            can_back=can_back,
+            can_forward=can_forward,
+        )
+        return out
+
+    def _apply_facilitator_turn(self, turn: dict, *, record_history: bool = True) -> None:
+        if turn.get("config_draft") is not None:
+            self.config_draft = dict(turn["config_draft"])
+        elif not turn.get("wizard_mode") and turn.get("turn_type") != "enrich":
+            if turn.get("turn_type") == "clarify" and not self.config_draft:
+                pass
+        if "config_draft" not in turn and turn.get("turn_type") == "clarify":
+            if not turn.get("wizard_mode") and record_history:
+                self.config_draft = None
+
         self.facilitator_turn = turn
-        self.session_turns.append({
-            "turn_type": turn.get("turn_type"),
-            "summary": turn.get("summary", "")[:300],
-            "skill_id": turn.get("skill_id"),
-        })
+        if record_history:
+            self._push_turn_history(turn)
+            self.session_turns.append({
+                "turn_type": turn.get("turn_type"),
+                "summary": turn.get("summary", "")[:300],
+                "skill_id": turn.get("skill_id"),
+            })
         try:
             composer = self.query_one("#center-pane", VibeComposerPane)
-            composer.render_turn(turn)
+            composer.render_turn(self._turn_with_nav(turn))
         except Exception:
             pass
         if turn.get("turn_type") == "propose":
@@ -375,6 +442,7 @@ class TuiApp(App):
         selected_choice_id: str | None = None,
         select_action: str | None = None,
         boot: bool = False,
+        choice: dict | None = None,
     ) -> None:
         async with self._facilitator_lock:
             composer = self.query_one("#center-pane", VibeComposerPane)
@@ -394,7 +462,18 @@ class TuiApp(App):
                 boot=boot,
                 force_mock=self.force_mock_facilitator
                 or not load_facilitator_config().get("api_key"),
+                config_draft=self.config_draft,
+                choice=choice,
             )
+            if selected_choice_id == "cfg_save" or select_action == "cfg_save":
+                self.project_brief = build_project_brief(
+                    self.project_id, data_dir=self.data_dir
+                )
+                self.config_draft = None
+                self._sync_model_label()
+            elif turn.get("config_draft") is None and turn.get("wizard_mode"):
+                if selected_choice_id in ("cfg_back_menu", "ai_setup") or select_action == "cfg_back_menu":
+                    self.config_draft = None
             self._apply_facilitator_turn(turn)
             self.last_action = f"facilitator:{turn.get('turn_type')}"
             self.refresh_projection()
@@ -435,6 +514,24 @@ class TuiApp(App):
     ) -> None:
         ch = event.choice
         action = ch.get("select_action")
+        if event.choice_id == "nav_back" or action == "nav_back":
+            self._navigate_turn_history(-1)
+            return
+        if event.choice_id == "nav_forward" or action == "nav_forward":
+            self._navigate_turn_history(1)
+            return
+        if action == "config_input" or ch.get("config_field"):
+            self.awaiting_config_field = ch.get("config_field")
+            try:
+                inp = self.query_one("#center-pane #vibe-input", Input)
+                inp.placeholder = ch.get(
+                    "input_prompt", "输入配置值后点 Transcribe"
+                )
+                self.last_action = f"config input: {self.awaiting_config_field}"
+                self.refresh_projection()
+            except Exception:
+                pass
+            return
         if event.choice_id == "other" or action == "freeform":
             self.awaiting_freeform = True
             try:
@@ -465,13 +562,22 @@ class TuiApp(App):
             user_text="",
             selected_choice_id=event.choice_id,
             select_action=action,
+            choice=ch,
         ))
 
     def on_vibe_composer_pane_transcribe_pressed(
         self, event: VibeComposerPane.TranscribePressed
     ) -> None:
         text = event.text.strip()
-        if not text and not self.awaiting_freeform:
+        if not text and not self.awaiting_freeform and not self.awaiting_config_field:
+            return
+        if self.awaiting_config_field or self.config_draft:
+            asyncio.create_task(self._facilitator_run(
+                user_text=text,
+                selected_choice_id="cfg_input",
+                select_action="config_input",
+            ))
+            self.awaiting_config_field = None
             return
         asyncio.create_task(self._facilitator_run(
             user_text=text,
@@ -519,6 +625,9 @@ class TuiApp(App):
         self.last_action = "session rejected"
         self._boot_done = False
         self.session_turns = []
+        self.turn_history = []
+        self.history_index = -1
+        self.config_draft = None
         asyncio.create_task(self._facilitator_run(boot=True))
         self.refresh_projection()
 

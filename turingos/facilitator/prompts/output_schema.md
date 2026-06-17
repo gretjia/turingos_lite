@@ -38,7 +38,7 @@
   "choices": [
     {"id": "url", "label": "粘贴 URL 抓取摘要", "select_action": "freeform"},
     {"id": "paste", "label": "粘贴文本/文档片段", "select_action": "freeform"},
-    {"id": "config", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
+    {"id": "ai_setup", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
     {"id": "skip", "label": "不需要，继续", "select_action": "skip"}
   ],
   "proposals": [],

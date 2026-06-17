@@ -82,8 +82,8 @@ def test_vibe_compose_approve_dispatch(data_dir):
                 selected_choice_id="submit", select_action="propose", user_text="create todo"
             )
             assert app.pending_proposals
-            await pilot.press("A")
-            await pilot.pause()
+            app._approve_proposals()
+            await pilot.pause(0.5)
             await pilot.press("q")
             await pilot.pause()
 

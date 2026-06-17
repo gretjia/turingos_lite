@@ -117,6 +117,7 @@ class VibeComposerPane(Vertical):
             super().__init__()
 
     preview_md = reactive("")
+    _choices_ready = True
 
     def compose(self) -> ComposeResult:
         yield Static("★ VIBE COMPOSER", classes="pane-title vibe-title")
@@ -161,14 +162,21 @@ class VibeComposerPane(Vertical):
             tape.update(
                 "[dim]批准后可选补充 — 点「不需要，继续」查看项目认知并进入下一步[/]"
             )
+        elif turn.get("wizard_mode"):
+            tape.update("[dim]配置向导 — 按步骤输入；可点「退回」返回上一题[/]")
         else:
             tape.update(
                 "[dim]选择一项；「我理解对了，可以提交」后出现 Approve；"
-                "「其他需求」在下方输入[/]"
+                "「← 退回上一题」可回看；「其他需求」在下方输入[/]"
             )
         md.update("\n\n".join(parts))
+        self._choices_ready = False
         self._render_choices(turn.get("choices") or [])
+        self.call_after_refresh(self._mark_choices_ready)
         self._set_approve_visible(turn_type == "propose")
+
+    def _mark_choices_ready(self) -> None:
+        self._choices_ready = True
 
     def _render_choices(self, choices: list[dict]) -> None:
         bar = self.query_one("#choice-bar", Vertical)
@@ -176,7 +184,8 @@ class VibeComposerPane(Vertical):
         for ch in choices:
             cid = ch.get("id", "opt")
             label = ch.get("label", cid)
-            btn = Button(label, id=f"choice-{cid}", variant="default")
+            btn = Button(label, id=f"mcq-{cid}", variant="default")
+            btn.can_focus = False
             btn.choice_data = ch  # type: ignore[attr-defined]
             bar.mount(btn)
 
@@ -213,9 +222,11 @@ class VibeComposerPane(Vertical):
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if not self._choices_ready:
+            return
         bid = event.button.id or ""
-        if bid.startswith("choice-"):
-            cid = bid[7:]
+        if bid.startswith("mcq-"):
+            cid = bid[4:]
             ch = getattr(event.button, "choice_data", {"id": cid})
             self.post_message(self.ChoiceSelected(cid, ch))
         elif bid == "transcribe-btn":

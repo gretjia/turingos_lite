@@ -18,6 +18,21 @@ SUBMIT_CHOICE: dict[str, Any] = {
     "select_action": "propose",
 }
 
+NAV_BACK_CHOICE: dict[str, Any] = {
+    "id": "nav_back",
+    "label": "← 退回上一题",
+    "select_action": "nav_back",
+}
+
+NAV_FORWARD_CHOICE: dict[str, Any] = {
+    "id": "nav_forward",
+    "label": "下一题 →",
+    "select_action": "nav_forward",
+}
+
+# Avoid Textual widget id collision with bare "config" (breaks choice-bar mounts).
+CFG_MENU_CHOICE_ID = "ai_setup"
+
 
 def _extract_json_blob(raw: str) -> str:
     raw = raw.strip()
@@ -40,10 +55,27 @@ def _extract_json_blob(raw: str) -> str:
     return raw
 
 
+def append_nav_choices(
+    choices: list[dict],
+    *,
+    can_back: bool = False,
+    can_forward: bool = False,
+) -> list[dict]:
+    """Prepend history navigation without duplicating nav ids."""
+    skip = {"nav_back", "nav_forward"}
+    out = [c for c in choices if c.get("id") not in skip]
+    prefix: list[dict] = []
+    if can_back:
+        prefix.append(dict(NAV_BACK_CHOICE))
+    if can_forward:
+        prefix.append(dict(NAV_FORWARD_CHOICE))
+    return prefix + out
+
+
 def ensure_standard_choices(choices: list[dict]) -> list[dict]:
     """Always include submit + other freeform options at end of MCQ."""
     ids = {c.get("id") for c in choices}
-    out = [c for c in choices if c.get("id") not in ("other", "submit")]
+    out = [c for c in choices if c.get("id") not in ("other", "submit", "nav_back", "nav_forward")]
     if "submit" not in ids:
         out.append(dict(SUBMIT_CHOICE))
     else:
@@ -60,7 +92,8 @@ def normalize_turn(data: dict[str, Any]) -> dict[str, Any]:
     if turn_type not in ("clarify", "propose", "enrich"):
         turn_type = "clarify"
     choices = data.get("choices") or []
-    if turn_type == "clarify":
+    wizard_mode = bool(data.get("wizard_mode"))
+    if turn_type == "clarify" and not wizard_mode:
         choices = ensure_standard_choices(choices)
     proposals = data.get("proposals") or []
     if turn_type == "propose" and not proposals:
@@ -76,6 +109,11 @@ def normalize_turn(data: dict[str, Any]) -> dict[str, Any]:
     cog = data.get("project_cognition")
     if cog:
         out["project_cognition"] = str(cog).strip()
+    if wizard_mode:
+        out["wizard_mode"] = True
+    cfg_draft = data.get("config_draft")
+    if cfg_draft:
+        out["config_draft"] = cfg_draft
     return out
 
 
