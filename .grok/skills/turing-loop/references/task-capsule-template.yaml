@@ -1,9 +1,10 @@
-# TuringLoop TaskCapsule v1.3 — fill before starting loop
+# TuringLoop TaskCapsule v1.4 — fill before starting loop
 task_id: "TL-YYYYMMDD-slug"
 description: ""          # one-line intent
 eta_estimate: "2h / 300 steps"   # REQUIRED
 frontier_mode: auto      # auto | force | off — BestPractice Alignment Pass
 alignment_topics: []     # e.g. ["python_elegance", "agentic_loop"]
+test_mode: auto_full     # auto_full | ipqc_only | manual_review — TestForge
 ipqc_mode: auto
 ipqc_trigger: dynamic    # interval = max(3, round(ETA_steps * 0.12 / (1 + failure_rate)))
 mini_loop_enabled: true
@@ -27,14 +28,16 @@ human_ux_gate: false     # true if any turingos/tui/* changes
 high_risk: false         # true → human ping at start
 
 failure_rate: 0.0
-rules_learned: []        # permanent rules from reflect + mini-recovery
-alignment_passes: []     # append minimal alignment_pass YAML blobs per fresh_bp
+rules_learned: []        # permanent rules from reflect + mini-recovery + test_forge
+alignment_passes: []     # append minimal alignment_pass YAML per fresh_bp
+test_forge_passes: []    # append minimal test_forge YAML per TestForge run
 
 handoff:
   branch: ""
   commit_sha: ""
   pr_url: ""
   freshness_delta: ""    # e.g. "3 new SOTA practices applied"
+  test_summary: ""       # e.g. "IPQC + 24 journeys PASS | 3 new test rules"
   new_rules_added: 0
   autonomy_achieved: 0   # 0-100%
   open_risks: []

@@ -122,7 +122,7 @@ handoff:
   turing_loop_ready: true
   proposal_path: "plans/PL-..."
   next_action: |
-    Activate AgenticForgeLoop v1.3 / TuringLoop
+    Activate AgenticForgeLoop v1.4 / TuringLoop
     Task: [from §0]
     ETA estimate: [from plan]
     frontier_mode: auto

@@ -7,7 +7,7 @@ Read `AGENTS.md` first, then pick a skill below.
 | skill | slash | path | one-liner |
 |-------|-------|------|-----------|
 | **plan-loop** | `/PlanLoop` | [`plan-loop/SKILL.md`](plan-loop/SKILL.md) | PlanLoop v1.2: Grill Me → research → debate → Canonical Proposal → approve → handoff |
-| **turing-loop** | `/TuringLoop` | [`turing-loop/SKILL.md`](turing-loop/SKILL.md) | AgenticForgeLoop v1.3: 8-step loop, `fresh_bp` alignment, IPQC, Reflect, Mini-Recovery, tier-3 |
+| **turing-loop** | `/TuringLoop` | [`turing-loop/SKILL.md`](turing-loop/SKILL.md) | AgenticForgeLoop v1.4: 8-step loop, TestForge, `fresh_bp`, IPQC, Reflect, Mini-Recovery, tier-3 |
 
 **Pipeline:** `/PlanLoop` (plan + §0 sign-off) → `/TuringLoop` (execute atoms).
 

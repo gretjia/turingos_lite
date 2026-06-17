@@ -53,5 +53,5 @@ Global Verification Plan:
 ```markdown
 **Approval Status**: Approved — [YYYY-MM-DD]
 **User Sign-off**: I approve the End State [x] Yes
-**Handoff**: Activate AgenticForgeLoop v1.3 / TuringLoop with atoms from this proposal.
+**Handoff**: Activate AgenticForgeLoop v1.4 / TuringLoop with atoms from this proposal.
 ```
