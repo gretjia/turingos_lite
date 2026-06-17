@@ -92,6 +92,8 @@ def test_human_j10_config_menu_entry(human_data, entry_id: str):
         await h.click_mcq(entry_id)
         if entry_id == "skill_worker":
             h.assert_mcq_present("worker_api_deepseek")
+        elif entry_id == "skill_deepseek_facilitator":
+            h.assert_turn_contains("DeepSeek")
         elif entry_id == "skill_nvidia":
             h.assert_turn_contains("Facilitator")
         else:
@@ -136,6 +138,16 @@ def test_human_j13_facilitator_nvidia_preset(human_data):
     run_human_journey(journey, human_data, "hj13")
 
 
+def test_human_j13b_facilitator_deepseek_preset(human_data):
+    async def journey(h: HumanDriver):
+        await h.click_mcq("ai_setup")
+        await h.click_mcq("skill_deepseek_facilitator")
+        await h.click_mcq("preset_deepseek_fac_flash")
+        h.assert_turn_contains("步骤 2/3")
+
+    run_human_journey(journey, human_data, "hj13b")
+
+
 def test_human_j14_nvidia_paste_in_composer(human_data):
     async def journey(h: HumanDriver):
         await h.type_and_send(NVIDIA_PASTE_SHORT)
@@ -170,23 +182,31 @@ def test_human_j21_worker_bundle_docs(human_data, bundle_id: str):
     run_human_journey(journey, human_data, f"hj21_{bundle_id}")
 
 
-def test_human_j22_worker_deepseek_full_wizard(human_data):
+def test_human_j22_worker_deepseek_full_wizard(human_data, monkeypatch):
+    saved = {}
+    monkeypatch.setattr(
+        "turingos.facilitator.config_wizard.save_worker_config",
+        lambda **kwargs: saved.update(kwargs),
+    )
+
     async def journey(h: HumanDriver):
         await h.click_mcq("ai_setup")
         await h.click_mcq("skill_worker")
         await h.click_mcq("worker_api_deepseek")
-        await h.click_mcq("preset_deepseek_deepseek-chat")
+        await h.click_mcq("preset_deepseek_deepseek-v4-flash")
         await h.click_mcq("cfg_input_key")
         h.assert_panel_visible()
         await h.fill_config_and_save("sk-test123456789012345678901234")
         h.assert_turn_contains("步骤 3/3")
         await h.click_mcq("cfg_input_model")
         h.assert_panel_visible()
-        await h.fill_config_and_save("deepseek-chat")
+        await h.fill_config_and_save("deepseek-v4-flash")
         await h.click_mcq("cfg_save")
         h.assert_turn_contains("Worker API 已保存")
 
     run_human_journey(journey, human_data, "hj22")
+    assert saved["provider_id"] == "deepseek"
+    assert saved["model"] == "deepseek-v4-flash"
 
 
 # ── Small terminal (SSH 80x24) — catches off-screen UX bugs ───────────────────

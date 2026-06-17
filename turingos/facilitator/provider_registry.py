@@ -9,17 +9,28 @@ AuthMode = Literal["api_key", "oauth", "cli", "env"]
 PROVIDER_PROFILES: dict[str, dict[str, Any]] = {
     "deepseek": {
         "label": "DeepSeek",
-        "docs_url": "https://api-docs.deepseek.com/",
-        "base_url": "https://api.deepseek.com/v1",
-        "default_model": "deepseek-chat",
+        "docs_url": "https://api-docs.deepseek.com/zh-cn/",
+        "base_url": "https://api.deepseek.com",
+        "default_model": "deepseek-v4-flash",
         "models": {
-            "deepseek-chat": {"thinking": False},
-            "deepseek-reasoner": {"thinking": True, "note": "内置 reasoning，无需 extra_body"},
+            "deepseek-v4-flash": {
+                "thinking": False,
+                "facilitator_default": True,
+                "worker_default": True,
+            },
+            "deepseek-v4-pro": {"thinking": True, "meta_default": True},
+            "deepseek-chat": {"thinking": False, "legacy": True},
+            "deepseek-reasoner": {"thinking": True, "legacy": True},
         },
         "auth_modes": ["api_key"],
         "token_prefixes": ["sk-"],
         "keywords": ["deepseek", "深度求索"],
         "extra_body_default": None,
+        "thinking_toggle": "extra_body.thinking.type",
+        "thinking_extra_body": {
+            True: {"thinking": {"type": "enabled"}},
+            False: {"thinking": {"type": "disabled"}},
+        },
     },
     "openai": {
         "label": "OpenAI",
@@ -115,12 +126,20 @@ def get_worker_profile(worker_id: str) -> dict[str, Any] | None:
     return WORKER_PROFILES.get(worker_id)
 
 
+def _model_extra_body(profile: dict[str, Any], model_info: dict[str, Any]) -> dict[str, Any] | None:
+    thinking_map = profile.get("thinking_extra_body")
+    if thinking_map and "thinking" in model_info:
+        return dict(thinking_map[bool(model_info["thinking"])])
+    return None
+
+
 def build_worker_api_targets() -> dict[str, dict[str, Any]]:
     """Wizard targets for Worker API (OpenAI-compatible whitebox dispatch)."""
     targets: dict[str, dict[str, Any]] = {}
     for pid, prof in PROVIDER_PROFILES.items():
         default_model = prof["default_model"]
-        presets: list[dict[str, str]] = []
+        default_extra_body = None
+        presets: list[dict[str, Any]] = []
         for mname, minfo in prof.get("models", {}).items():
             entry = {
                 "id": f"preset_{pid}_{mname.replace('/', '_')}",
@@ -128,9 +147,13 @@ def build_worker_api_targets() -> dict[str, dict[str, Any]]:
                 "base_url": prof["base_url"],
                 "model": mname,
             }
+            extra_body = _model_extra_body(prof, minfo)
+            if extra_body:
+                entry["extra_body"] = extra_body
             presets.append(entry)
-            if minfo.get("facilitator_default"):
+            if minfo.get("worker_default") or minfo.get("facilitator_default"):
                 default_model = mname
+                default_extra_body = extra_body
         if not presets:
             presets.append({
                 "id": f"preset_{pid}",
@@ -145,6 +168,7 @@ def build_worker_api_targets() -> dict[str, dict[str, Any]]:
             "provider_id": pid,
             "default_base": prof["base_url"],
             "default_model": default_model,
+            "default_extra_body": default_extra_body,
             "presets": presets[:4],
         }
     targets["worker_api_custom"] = {

@@ -22,6 +22,7 @@ _WORKER_API_TARGETS = build_worker_api_targets()
 
 CONFIG_TARGET_IDS = frozenset({
     "skill_openai",
+    "skill_deepseek_facilitator",
     "skill_nvidia",
     "skill_worker",
 })
@@ -37,11 +38,26 @@ _CONFIG_ACTIONS = frozenset({
 _TARGETS: dict[str, dict[str, Any]] = {
     "skill_openai": {
         "kind": "meta",
-        "title": "Meta AI（OpenAI 格式）",
+        "title": "Meta AI（OpenAI 兼容格式）",
         "skill_id": "setup-meta-ai-openai",
-        "default_base": "https://api.openai.com/v1",
-        "default_model": "gpt-4o-mini",
+        "default_base": "https://api.deepseek.com",
+        "default_model": "deepseek-v4-pro",
+        "default_extra_body": {"thinking": {"type": "enabled"}},
         "presets": [
+            {
+                "id": "preset_deepseek_meta_pro",
+                "label": "DeepSeek V4 Pro（Meta，thinking on）",
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-v4-pro",
+                "extra_body": {"thinking": {"type": "enabled"}},
+            },
+            {
+                "id": "preset_deepseek_meta_flash",
+                "label": "DeepSeek V4 Flash（Meta，thinking off）",
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-v4-flash",
+                "extra_body": {"thinking": {"type": "disabled"}},
+            },
             {
                 "id": "preset_openai",
                 "label": "OpenAI 官方 API",
@@ -53,6 +69,30 @@ _TARGETS: dict[str, dict[str, Any]] = {
                 "label": "NVIDIA Integrate API",
                 "base_url": "https://integrate.api.nvidia.com/v1",
                 "model": "nvidia/nemotron-mini-4b-instruct",
+            },
+        ],
+    },
+    "skill_deepseek_facilitator": {
+        "kind": "facilitator",
+        "title": "Facilitator（DeepSeek V4 Flash）",
+        "skill_id": "setup-facilitator-deepseek",
+        "default_base": "https://api.deepseek.com",
+        "default_model": "deepseek-v4-flash",
+        "default_extra_body": {"thinking": {"type": "disabled"}},
+        "presets": [
+            {
+                "id": "preset_deepseek_fac_flash",
+                "label": "DeepSeek V4 Flash（thinking off）",
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-v4-flash",
+                "extra_body": {"thinking": {"type": "disabled"}},
+            },
+            {
+                "id": "preset_deepseek_fac_pro",
+                "label": "DeepSeek V4 Pro（thinking on）",
+                "base_url": "https://api.deepseek.com",
+                "model": "deepseek-v4-pro",
+                "extra_body": {"thinking": {"type": "enabled"}},
             },
         ],
     },
@@ -119,6 +159,8 @@ def new_config_draft(target_id: str) -> dict[str, Any]:
         "model": t["default_model"],
         "api_key": None,
     }
+    if t.get("default_extra_body"):
+        draft["_extras"] = {"extra_body": t["default_extra_body"]}
     if t.get("provider_id"):
         draft["provider_id"] = t["provider_id"]
     return draft
@@ -364,8 +406,9 @@ def _config_menu_turn() -> dict[str, Any]:
         "wizard_mode": True,
         "summary": "选择要配置的组件：Facilitator（对话）、Meta AI（提案）、Worker（执行）。",
         "choices": [
+            {"id": "skill_deepseek_facilitator", "label": "配置 Facilitator（DeepSeek V4 Flash）", "skill_id": "setup-facilitator-deepseek"},
             {"id": "skill_nvidia", "label": "配置 Facilitator（NVIDIA Diffusion Gemma）", "skill_id": "setup-facilitator-nvidia"},
-            {"id": "skill_openai", "label": "配置 Meta AI（OpenAI 格式）", "skill_id": "setup-meta-ai-openai"},
+            {"id": "skill_openai", "label": "配置 Meta AI（DeepSeek/OpenAI 格式）", "skill_id": "setup-meta-ai-openai"},
             {"id": "skill_worker", "label": "配置 Worker（API 官方 + CLI Bundle）", "skill_id": "setup-worker-api-openai"},
         ],
         "proposals": [],
@@ -386,6 +429,7 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
                 "select_action": "config_preset",
                 "preset_base": p["base_url"],
                 "preset_model": p["model"],
+                "preset_extra_body": p.get("extra_body"),
             }
             for p in t["presets"]
         ]
@@ -451,6 +495,7 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
                 "label": f"模型：{p['model']}",
                 "select_action": "config_preset",
                 "preset_model": p["model"],
+                "preset_extra_body": p.get("extra_body"),
             }
             for p in t.get("presets", [])
         ]
@@ -558,6 +603,10 @@ def run_config_wizard(
             draft["base_url"] = ch["preset_base"]
         if ch.get("preset_model"):
             draft["model"] = ch["preset_model"]
+        if ch.get("preset_extra_body"):
+            extras = dict(draft.get("_extras") or {})
+            extras["extra_body"] = ch["preset_extra_body"]
+            draft["_extras"] = extras
         draft = _advance_step(draft)
         return _step_turn(draft), draft
 

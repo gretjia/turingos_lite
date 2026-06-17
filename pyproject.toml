@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["turingos*"]
+include = ["turingos*", "audits*"]
 
 [project]
 name = "turingos-lite"
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-turing = "turingos.cli:app"
+turing = "turingos.__main__:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

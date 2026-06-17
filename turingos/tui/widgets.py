@@ -378,12 +378,14 @@ class NextActionPane(Vertical):
         yield Static("Next Action + Loop", classes="pane-title")
         yield Static("", id="next-text")
         yield ProgressBar(total=100, show_eta=False, id="loop-progress")
-        with Horizontal():
-            yield Button("Goal", id="loop-goal")
-            yield Button("Set", id="loop-set")
-            yield Button("Orchestrate", id="loop-orch")
-            yield Button("Execute", id="loop-exec")
-            yield Button("Verify", id="loop-verify")
+        with Vertical(id="loop-controls"):
+            with Horizontal(id="loop-row-primary"):
+                yield Button("Goal", id="loop-goal")
+                yield Button("Set", id="loop-set")
+                yield Button("Orchestrate", id="loop-orch")
+            with Horizontal(id="loop-row-action"):
+                yield Button("Execute", id="loop-exec")
+                yield Button("Verify", id="loop-verify")
 
     def update_action(self, text: str, progress: int = 0) -> None:
         self.query_one("#next-text", Static).update(text)

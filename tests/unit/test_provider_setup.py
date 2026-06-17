@@ -1,13 +1,28 @@
 """Provider auto-setup skill tests."""
+import sys
+from types import SimpleNamespace
+
 from turingos.facilitator.provider_setup import (
+    apply_provider_config,
     auto_setup_turn,
     detect_provider_id,
     extract_api_token,
     is_project_question,
     is_provider_paste,
     parse_provider_paste,
+    test_openai_compatible as probe_openai_compatible,
 )
 from turingos.facilitator.facilitate import facilitate_turn
+
+DEEPSEEK_V4_SAMPLE = '''
+client.chat.completions.create(
+    model="deepseek-v4-flash",
+    messages=[{"role": "user", "content": "pong"}],
+    extra_body={"thinking": {"type": "disabled"}},
+)
+base_url = "https://api.deepseek.com/chat/completions"
+Authorization: Bearer sk-test123456789012345678901234
+'''
 
 NVIDIA_SAMPLE = '''
 invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -42,6 +57,86 @@ def test_parse_nvidia_paste():
     assert parsed["temperature"] == 1.0
     assert parsed["top_p"] == 0.95
     assert parsed["max_tokens"] == 4096
+
+
+def test_parse_deepseek_v4_thinking_paste():
+    parsed = parse_provider_paste(DEEPSEEK_V4_SAMPLE)
+    assert parsed["parsed"]
+    assert parsed["provider_id"] == "deepseek"
+    assert parsed["base_url"] == "https://api.deepseek.com"
+    assert parsed["model"] == "deepseek-v4-flash"
+    assert parsed["thinking"] is False
+    assert parsed["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_apply_deepseek_v4_thinking_modes(monkeypatch):
+    saved = {}
+
+    def save_meta_config(**kw):
+        saved["meta"] = kw
+
+    def load_meta_config():
+        return {
+            "base_url": saved["meta"]["base_url"],
+            "model": saved["meta"]["model"],
+            "api_key": "stored",
+            "extra_body": saved["meta"].get("extra_body"),
+        }
+
+    monkeypatch.setattr(
+        "turingos.facilitator.provider_setup.save_meta_config",
+        save_meta_config,
+    )
+    monkeypatch.setattr(
+        "turingos.facilitator.provider_setup.load_meta_config",
+        load_meta_config,
+    )
+
+    cfg = apply_provider_config(
+        "deepseek",
+        "sk-test123456789012345678901234",
+        model="deepseek-v4-pro",
+        thinking=True,
+    )
+    assert cfg["model"] == "deepseek-v4-pro"
+    assert cfg["extra_body"] == {"thinking": {"type": "enabled"}}
+
+    cfg = apply_provider_config(
+        "deepseek",
+        "sk-test123456789012345678901234",
+        model="deepseek-v4-flash",
+        thinking=False,
+    )
+    assert cfg["model"] == "deepseek-v4-flash"
+    assert cfg["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_thinking_probe_allocates_reasoning_budget(monkeypatch):
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            msg = SimpleNamespace(content="pong", reasoning_content="checked")
+            choice = SimpleNamespace(message=msg)
+            return SimpleNamespace(choices=[choice])
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+    res = probe_openai_compatible({
+        "base_url": "https://api.deepseek.com",
+        "api_key": "sk-test123456789012345678901234",
+        "model": "deepseek-v4-pro",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    })
+
+    assert res["ok"]
+    assert res["has_reasoning"]
+    assert calls[0]["max_tokens"] == 256
+    assert calls[0]["extra_body"] == {"thinking": {"type": "enabled"}}
 
 
 def test_is_provider_paste_nvidia_code():

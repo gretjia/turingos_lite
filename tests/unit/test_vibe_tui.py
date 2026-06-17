@@ -137,3 +137,96 @@ def test_headless_get_projections(data_dir):
     proj = app.get_projections()
     assert "state" in proj
     assert proj["state"]["project_id"] == pid
+
+
+def test_layout_mode_for_regular_terminal(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "layout_regular"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(122, 30)) as pilot:
+            await pilot.pause(0.2)
+            assert app.has_class("focus")
+            assert not app.has_class("compact")
+            assert not app.has_class("wide")
+
+    asyncio.run(drive())
+
+
+def test_layout_mode_for_wide_terminal(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "layout_wide"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(287, 66)) as pilot:
+            await pilot.pause(0.2)
+            assert app.has_class("wide")
+            assert not app.has_class("compact")
+            assert not app.has_class("focus")
+
+    asyncio.run(drive())
+
+
+def test_next_action_buttons_split_for_wide_terminal(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "layout_loop_controls"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(252, 66)) as pilot:
+            await pilot.pause(0.2)
+            primary_ids = [button.id for button in app.query("#loop-row-primary Button")]
+            action_ids = [button.id for button in app.query("#loop-row-action Button")]
+            assert primary_ids == ["loop-goal", "loop-set", "loop-orch"]
+            assert action_ids == ["loop-exec", "loop-verify"]
+
+    asyncio.run(drive())
+
+
+def test_layout_mode_updates_after_terminal_resize(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "layout_resize"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(122, 30)) as pilot:
+            await pilot.pause(0.2)
+            assert app.has_class("focus")
+            await pilot.resize_terminal(287, 66)
+            await pilot.pause(0.8)
+            assert app.has_class("wide")
+            assert not app.has_class("focus")
+
+    asyncio.run(drive())
+
+
+def test_evidence_pane_uses_compact_summary(data_dir):
+    os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
+    pid = "evidence_summary"
+    gt = MicroGitTape(pid, data_dir=data_dir)
+    gt.init()
+    wtool_append(pid, make_event(SYSTEM_BOOTSTRAPPED, {"boot": "test"}), data_dir=data_dir)
+    wtool_append(pid, make_event(PROJECT_READY, {"name": pid}), data_dir=data_dir)
+
+    async def drive():
+        app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+        async with app.run_test(size=(287, 66)) as pilot:
+            await pilot.pause(0.2)
+            app.refresh_projection()
+            evidence = str(app.query_one("#evidence-pane #evidence-log").content)
+            assert "Project:" in evidence
+            assert "Status:" in evidence
+            assert "Micro events" in evidence
+            assert "README:" not in evidence
+
+    asyncio.run(drive())
