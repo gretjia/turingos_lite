@@ -96,6 +96,16 @@ Key files:
 
 See `AGENTS.md` for the complete harness rules that all agents (human or AI) must follow on this codebase.
 
+## Architecture & Design History
+
+All major architecture, design, and planning conversations have been captured for future reference in the `architecture/` folder (created 2026-06-17 at the user's request).
+
+This lets us trace exactly where ideas originated and how the program evolved from the original charter conversations.
+
+Start with `architecture/07-index-and-conversation-map.md` for the overview, then the numbered files (00–06) for the detailed thinking on Software 3.0 vision, keyring/secret management, loops & multi-agents, CLI/TUI entry points, testing protocols, and the actual keyring implementation.
+
+These conversations (especially the explicit "think like Karpathy about Software 3.0 first" exercise) are the root of how TuringOS Lite looks today.
+
 ## Status
 
 Initial harness + skeleton setup (research-driven, charter-aligned).  
@@ -105,3 +115,22 @@ Next: follow Phase 0/1 atoms to flesh out Micro Git ChainTape kernel etc.
 ---
 
 *Built with the explicit goal of a completely AGI-towards (Software 3.0) product UX while maintaining strict sovereignty via dual tapes, predicates, and projection.* 
+
+## Global `turing` command (any working directory)
+
+We set up a launcher at `~/.local/bin/turing` (and the proper console script via pyproject.toml).
+
+```bash
+# Make it available everywhere (add to your shell rc file)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Now from *any* folder:
+turing          # launches the TUI directly (no subcommand needed)
+turing tui
+turing --help
+turing intent "..."
+```
+
+On first TUI launch, a prominent message in the NEXT ACTION pane guides you to configure the **Meta AI** (the Facilitator / OpenAI-compatible control/proposer model from the charter). Set the three env vars and restart `turing`. The app will auto-persist a basic config if the envs are present.
+
+(Full details in TESTING_MANUAL.md)
