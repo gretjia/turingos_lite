@@ -156,14 +156,15 @@ class VibeComposerPane(Vertical):
             yield VibeInput("", id="vibe-input", show_line_numbers=False)
             yield Button("Send", id="transcribe-btn", variant="primary")
         yield VerticalScroll(id="chat-thread")
-        yield Markdown("", id="preview-md")
-        yield Vertical(id="choice-bar")
-        with Vertical(id="config-input-panel"):
-            yield Static("", id="config-input-hint")
-            with Horizontal(id="config-input-row"):
-                yield Input(placeholder="", id="config-input")
-                yield Button("保存", id="config-input-btn", variant="primary")
-        yield Static("", id="tape-preview")
+        with VerticalScroll(id="composer-body", can_focus=True):
+            yield Markdown("", id="preview-md")
+            yield Vertical(id="choice-bar")
+            with Vertical(id="config-input-panel"):
+                yield Static("", id="config-input-hint")
+                with Horizontal(id="config-input-row"):
+                    yield Input(placeholder="", id="config-input")
+                    yield Button("保存", id="config-input-btn", variant="primary")
+            yield Static("", id="tape-preview")
         with Horizontal(id="action-row"):
             yield Button("Refine", id="refine-btn")
             yield Button("Approve", id="approve-btn", variant="success")
@@ -249,7 +250,9 @@ class VibeComposerPane(Vertical):
         elif turn_type == "chat":
             tape.update("[dim]对话模式 — 回复已显示在上方线程；可选 MCQ 继续[/]")
         elif turn.get("wizard_mode"):
-            tape.update("[dim]配置向导 — 按步骤输入；可点「退回」返回上一题[/]")
+            tape.update(
+                "[dim]配置向导 — 选项多时可滚动中间区域（↑↓）；可整段粘贴官网代码到顶部 Send[/]"
+            )
         else:
             tape.update(
                 "[dim]选择一项；「我理解对了，可以提交」后出现 Approve；"
@@ -258,13 +261,21 @@ class VibeComposerPane(Vertical):
         md.update("\n\n".join(parts))
         self._choices_ready = False
         self._render_choices(turn.get("choices") or [])
-        self.call_after_refresh(self._mark_choices_ready)
+        self.call_after_refresh(self._after_choices_rendered)
         self._set_approve_visible(turn_type == "propose")
         if turn_type == "chat":
             self._set_approve_visible(False)
 
     def _mark_choices_ready(self) -> None:
         self._choices_ready = True
+
+    def _after_choices_rendered(self) -> None:
+        self._mark_choices_ready()
+        try:
+            body = self.query_one("#composer-body", VerticalScroll)
+            body.scroll_end(animate=False)
+        except Exception:
+            pass
 
     def _render_choices(self, choices: list[dict]) -> None:
         bar = self.query_one("#choice-bar", Vertical)
@@ -315,6 +326,8 @@ class VibeComposerPane(Vertical):
         bid = event.button.id or ""
         if bid.startswith("mcq-"):
             cid = bid[4:]
+            if not self._choices_ready and not cid.startswith("cfg_input"):
+                return
             ch = getattr(event.button, "choice_data", {"id": cid})
             self.post_message(self.ChoiceSelected(cid, ch))
         elif bid == "transcribe-btn":

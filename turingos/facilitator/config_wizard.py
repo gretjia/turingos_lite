@@ -3,9 +3,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from turingos.config import load_facilitator_config, load_meta_config, save_meta_config
+from turingos.config import (
+    load_facilitator_config,
+    load_meta_config,
+    load_worker_config,
+    save_meta_config,
+    save_worker_config,
+)
+from turingos.facilitator.provider_registry import build_worker_api_targets, is_worker_api_target
 from turingos.facilitator.provider_setup import parse_provider_paste
 from turingos.facilitator.schema import normalize_turn
+
+_WORKER_API_TARGETS = build_worker_api_targets()
 
 CONFIG_TARGET_IDS = frozenset({
     "skill_openai",
@@ -61,6 +70,14 @@ _TARGETS: dict[str, dict[str, Any]] = {
 }
 
 
+def _lookup_target(target_id: str) -> dict[str, Any]:
+    if target_id in _TARGETS:
+        return _TARGETS[target_id]
+    if target_id in _WORKER_API_TARGETS:
+        return _WORKER_API_TARGETS[target_id]
+    raise KeyError(target_id)
+
+
 def is_config_flow(
     *,
     config_draft: dict | None,
@@ -72,6 +89,8 @@ def is_config_flow(
     if selected_choice_id == "ai_setup":
         return True
     if selected_choice_id in CONFIG_TARGET_IDS:
+        return True
+    if is_worker_api_target(selected_choice_id):
         return True
     if selected_choice_id and selected_choice_id.startswith("worker_"):
         return True
@@ -85,8 +104,8 @@ def is_config_flow(
 
 
 def new_config_draft(target_id: str) -> dict[str, Any]:
-    t = _TARGETS[target_id]
-    return {
+    t = _lookup_target(target_id)
+    draft: dict[str, Any] = {
         "target_id": target_id,
         "kind": t["kind"],
         "title": t["title"],
@@ -96,6 +115,9 @@ def new_config_draft(target_id: str) -> dict[str, Any]:
         "model": t["default_model"],
         "api_key": None,
     }
+    if t.get("provider_id"):
+        draft["provider_id"] = t["provider_id"]
+    return draft
 
 
 def _mask_key(key: str | None) -> str:
@@ -109,6 +131,8 @@ def _mask_key(key: str | None) -> str:
 def _current_key_status(kind: str) -> str:
     if kind == "meta":
         cfg = load_meta_config()
+    elif kind == "worker":
+        cfg = load_worker_config()
     else:
         cfg = load_facilitator_config()
     if cfg.get("api_key"):
@@ -131,6 +155,12 @@ def _save_draft(draft: dict) -> str:
         "max_tokens": extras.get("max_tokens"),
         "extra_body": extras.get("extra_body"),
     }
+    if kind == "worker":
+        save_worker_config(
+            **save_kw,
+            provider_id=draft.get("provider_id"),
+        )
+        return "Worker API"
     if kind == "meta":
         save_meta_config(**save_kw)
         return "Meta AI"
@@ -141,22 +171,34 @@ def _save_draft(draft: dict) -> str:
 
 
 def _worker_picker_turn() -> dict[str, Any]:
+    api_choices = [
+        {
+            "id": tid,
+            "label": f"API · {t['title'].replace('Worker API — ', '')}",
+            "skill_id": "setup-worker-api-openai",
+        }
+        for tid, t in _WORKER_API_TARGETS.items()
+    ]
+    bundle_choices = [
+        {"id": "worker_codex", "label": "Bundle · Codex（OAuth）", "skill_id": "setup-worker-codex-oauth"},
+        {"id": "worker_claude", "label": "Bundle · Claude CLI", "skill_id": "setup-worker-claude-cli"},
+        {"id": "worker_grok", "label": "Bundle · Grok Build", "skill_id": "setup-worker-grok-build"},
+    ]
     return normalize_turn({
         "turn_type": "clarify",
         "wizard_mode": True,
         "summary": (
             "**Worker 配置**\n\n"
-            "Worker 通过 CLI/OAuth 接入（Codex、Claude、Grok）。"
-            "选择一种查看说明；API Worker 在 dispatch 时配置。"
+            "**API Worker（白盒，推荐）** — 直接 API，dispatch 时用 `--worker api`。\n"
+            "支持 DeepSeek / NVIDIA / OpenAI / Groq / Anthropic / 自定义。\n\n"
+            "**Bundle Worker** — Codex / Claude / Grok CLI（OAuth/黑盒）。\n\n"
+            "选项较多时可 **↓ 滚动** 中间配置区域查看全部。"
         ),
-        "choices": [
-            {"id": "worker_codex", "label": "Codex（OAuth）", "skill_id": "setup-worker-codex-oauth"},
-            {"id": "worker_claude", "label": "Claude CLI", "skill_id": "setup-worker-claude-cli"},
-            {"id": "worker_grok", "label": "Grok Build", "skill_id": "setup-worker-grok-build"},
+        "choices": api_choices + bundle_choices + [
             {"id": "cfg_back_menu", "label": "← 退回配置菜单", "select_action": "cfg_back_menu"},
         ],
         "proposals": [],
-        "skill_id": "setup-worker-codex-oauth",
+        "skill_id": "setup-worker-api-openai",
     })
 
 
@@ -168,7 +210,7 @@ def _config_menu_turn() -> dict[str, Any]:
         "choices": [
             {"id": "skill_nvidia", "label": "配置 Facilitator（NVIDIA Diffusion Gemma）", "skill_id": "setup-facilitator-nvidia"},
             {"id": "skill_openai", "label": "配置 Meta AI（OpenAI 格式）", "skill_id": "setup-meta-ai-openai"},
-            {"id": "skill_worker", "label": "配置 Worker（Codex / Claude / Grok）", "skill_id": "setup-worker-codex-oauth"},
+            {"id": "skill_worker", "label": "配置 Worker（API 官方 + CLI Bundle）", "skill_id": "setup-worker-api-openai"},
         ],
         "proposals": [],
     })
@@ -180,7 +222,7 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
     key_status = _current_key_status(draft["kind"])
 
     if step == "base_url":
-        t = _TARGETS[draft["target_id"]]
+        t = _lookup_target(draft["target_id"])
         choices = [
             {
                 "id": p["id"],
@@ -243,7 +285,10 @@ def _step_turn(draft: dict[str, Any]) -> dict[str, Any]:
         })
 
     if step == "model":
-        t = _TARGETS.get(draft["target_id"], {})
+        try:
+            t = _lookup_target(draft["target_id"])
+        except KeyError:
+            t = {}
         choices = [
             {
                 "id": p["id"],
@@ -329,6 +374,10 @@ def run_config_wizard(
         return _worker_picker_turn(), None
 
     draft = dict(config_draft) if config_draft else None
+    if draft is None and is_worker_api_target(selected_choice_id):
+        draft = new_config_draft(selected_choice_id)  # type: ignore[arg-type]
+        return _step_turn(draft), draft
+
     if selected_choice_id in CONFIG_TARGET_IDS and draft is None:
         if selected_choice_id == "skill_worker":
             return _worker_picker_turn(), None
@@ -391,12 +440,18 @@ def run_config_wizard(
 
     if select_action == "cfg_save" or selected_choice_id == "cfg_save":
         label = _save_draft(draft)
+        extra = ""
+        if draft.get("kind") == "worker":
+            extra = "\n\nDispatch 时使用：`turing dispatch <capsule> --worker api`"
         turn = normalize_turn({
             "turn_type": "clarify",
             "wizard_mode": True,
-            "summary": f"**{label} 已保存**（keyring + 元数据）。可继续配置或返回主流程。",
+            "summary": (
+                f"**{label} 已保存**（keyring + 元数据）。可继续配置或返回主流程。{extra}"
+            ),
             "choices": [
                 {"id": "ai_setup", "label": "继续配置其他组件"},
+                {"id": "skill_worker", "label": "继续配置 Worker"},
                 {"id": "explore", "label": "返回：扫描项目"},
                 {"id": "task", "label": "返回：我有具体任务"},
             ],

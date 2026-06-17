@@ -33,14 +33,19 @@ E2E_SIZE = (160, 56)
 async def _pilot_click_choice(app: TuiApp, pilot, choice_id: str) -> None:
     """Click MCQ button; fall back to message dispatch if off-screen."""
     sel = f"#mcq-{choice_id}"
-    try:
-        await pilot.click(sel)
-    except Exception:
-        composer = app.query_one("#center-pane", VibeComposerPane)
-        btn = composer.query_one(sel, expect_type=None)
-        ch = getattr(btn, "choice_data", {"id": choice_id})
+    ch = next(
+        (c for c in app.facilitator_turn.get("choices", []) if c.get("id") == choice_id),
+        {"id": choice_id},
+    )
+    composer = app.query_one("#center-pane", VibeComposerPane)
+    if choice_id.startswith("cfg_input"):
         composer.post_message(composer.ChoiceSelected(choice_id, ch))
-        await _wait_facilitator_idle(app, pilot)
+    else:
+        try:
+            await pilot.click(sel)
+        except Exception:
+            composer.post_message(composer.ChoiceSelected(choice_id, ch))
+    await _wait_facilitator_idle(app, pilot)
 
 
 async def _wait_facilitator_idle(app: TuiApp, pilot) -> None:

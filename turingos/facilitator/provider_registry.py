@@ -113,3 +113,51 @@ def get_profile(provider_id: str) -> dict[str, Any] | None:
 
 def get_worker_profile(worker_id: str) -> dict[str, Any] | None:
     return WORKER_PROFILES.get(worker_id)
+
+
+def build_worker_api_targets() -> dict[str, dict[str, Any]]:
+    """Wizard targets for Worker API (OpenAI-compatible whitebox dispatch)."""
+    targets: dict[str, dict[str, Any]] = {}
+    for pid, prof in PROVIDER_PROFILES.items():
+        default_model = prof["default_model"]
+        presets: list[dict[str, str]] = []
+        for mname, minfo in prof.get("models", {}).items():
+            entry = {
+                "id": f"preset_{pid}_{mname.replace('/', '_')}",
+                "label": f"{prof['label']} · {mname}",
+                "base_url": prof["base_url"],
+                "model": mname,
+            }
+            presets.append(entry)
+            if minfo.get("facilitator_default"):
+                default_model = mname
+        if not presets:
+            presets.append({
+                "id": f"preset_{pid}",
+                "label": f"{prof['label']} 官方",
+                "base_url": prof["base_url"],
+                "model": default_model,
+            })
+        targets[f"worker_api_{pid}"] = {
+            "kind": "worker",
+            "title": f"Worker API — {prof['label']}",
+            "skill_id": "setup-worker-api-openai",
+            "provider_id": pid,
+            "default_base": prof["base_url"],
+            "default_model": default_model,
+            "presets": presets[:4],
+        }
+    targets["worker_api_custom"] = {
+        "kind": "worker",
+        "title": "Worker API — 其他（自定义 OpenAI 兼容）",
+        "skill_id": "setup-worker-api-openai",
+        "provider_id": "custom",
+        "default_base": "https://api.openai.com/v1",
+        "default_model": "gpt-4o-mini",
+        "presets": [],
+    }
+    return targets
+
+
+def is_worker_api_target(target_id: str | None) -> bool:
+    return bool(target_id and target_id.startswith("worker_api_"))

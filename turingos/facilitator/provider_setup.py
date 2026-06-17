@@ -7,7 +7,14 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from turingos.config import load_facilitator_config, load_meta_config, save_facilitator_config, save_meta_config
+from turingos.config import (
+    load_facilitator_config,
+    load_meta_config,
+    load_worker_config,
+    save_facilitator_config,
+    save_meta_config,
+    save_worker_config,
+)
 from turingos.facilitator.provider_registry import PROVIDER_PROFILES, get_profile
 from turingos.facilitator.schema import normalize_turn
 
@@ -225,6 +232,9 @@ def apply_provider_config(
     if role == "facilitator":
         save_facilitator_config(**save_kw)
         cfg = load_facilitator_config()
+    elif role == "worker":
+        save_worker_config(**save_kw, provider_id=provider_id)
+        cfg = load_worker_config()
     else:
         save_meta_config(**save_kw)
         cfg = load_meta_config()

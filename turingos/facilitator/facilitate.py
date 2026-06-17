@@ -92,7 +92,8 @@ def mock_facilitate_turn(
     text = (user_text or "").lower()
 
     if user_text and not selected_choice_id and not select_action:
-        role = "facilitator" if (config_draft or {}).get("kind") == "facilitator" else "meta"
+        kind = (config_draft or {}).get("kind", "meta")
+        role = {"facilitator": "facilitator", "worker": "worker"}.get(kind, "meta")
         setup = auto_setup_turn(user_text, role=role, force_mock_test=True)
         if setup:
             return setup
@@ -140,6 +141,10 @@ def mock_facilitate_turn(
             user_text=user_text,
             choice=choice,
         )
+        return turn
+
+    if selected_choice_id and selected_choice_id.startswith("worker_api_"):
+        turn, _draft = run_config_wizard(selected_choice_id=selected_choice_id)
         return turn
 
     if selected_choice_id and selected_choice_id.startswith("worker_"):
@@ -366,7 +371,8 @@ def facilitate_turn(
     if user_text and not boot:
         role = "meta"
         if config_draft:
-            role = "facilitator" if config_draft.get("kind") == "facilitator" else "meta"
+            kind = config_draft.get("kind", "meta")
+            role = {"facilitator": "facilitator", "worker": "worker"}.get(kind, "meta")
         setup = auto_setup_turn(
             user_text, role=role, force_mock_test=force_mock,
         )

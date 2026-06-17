@@ -15,6 +15,25 @@ def data_dir(tmp_path):
     return d
 
 
+def test_worker_picker_includes_api_providers():
+    turn, draft = run_config_wizard(selected_choice_id="skill_worker")
+    assert draft is None
+    ids = {c["id"] for c in turn["choices"]}
+    assert "worker_api_deepseek" in ids
+    assert "worker_api_nvidia" in ids
+    assert "worker_api_openai" in ids
+    assert "worker_api_custom" in ids
+    assert "worker_codex" in ids
+
+
+def test_worker_api_deepseek_starts_wizard():
+    turn, draft = run_config_wizard(selected_choice_id="worker_api_deepseek")
+    assert draft is not None
+    assert draft["kind"] == "worker"
+    assert draft["step"] == "base_url"
+    assert "deepseek" in draft["base_url"].lower()
+
+
 def test_meta_wizard_step_flow():
     turn, draft = run_config_wizard(selected_choice_id="skill_openai")
     assert draft and draft["step"] == "base_url"

@@ -96,6 +96,10 @@ class TuiApp(App):
     #vibe-input { width: 1fr; height: 7; min-height: 5; border: solid #30363d; }
     #chat-thread { height: 10; max-height: 12; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
     #composer-hint { height: 1; margin-bottom: 1; }
+    #composer-body { height: 1fr; min-height: 14; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
+    #preview-md { height: auto; }
+    #choice-bar { height: auto; }
+    #tape-preview { height: auto; min-height: 1; }
     #config-input-panel { height: auto; border: solid #388bfd; padding: 1; margin: 1 0; background: #161b22; }
     #config-input-row { height: auto; min-height: 3; }
     #config-input { width: 1fr; height: 3; min-height: 3; border: solid #58a6ff; }
@@ -535,10 +539,19 @@ class TuiApp(App):
         self._apply_facilitator_turn(enrich)
         self.refresh_projection()
 
+    _CFG_INPUT_FIELDS = {
+        "cfg_input_base": "base_url",
+        "cfg_input_key": "api_key",
+        "cfg_input_model": "model",
+    }
+
     def on_vibe_composer_pane_choice_selected(
         self, event: VibeComposerPane.ChoiceSelected
     ) -> None:
-        ch = event.choice
+        ch = dict(event.choice)
+        if event.choice_id in self._CFG_INPUT_FIELDS and not ch.get("config_field"):
+            ch["config_field"] = self._CFG_INPUT_FIELDS[event.choice_id]
+            ch["select_action"] = "config_input"
         action = ch.get("select_action")
         if event.choice_id == "nav_back" or action == "nav_back":
             self._navigate_turn_history(-1)
