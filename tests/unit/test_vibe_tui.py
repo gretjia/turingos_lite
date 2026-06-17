@@ -55,8 +55,18 @@ def test_autonomy_levels(data_dir):
 
     app50 = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
     app50.autonomy = 50
-    app50.pending_proposals = [{"event_type": INTENT_CAPTURED, "payload": {"task": "x"}}]
-    assert not app50._should_auto_approve()
+    app50.pending_proposals = [
+        {
+            "event_type": WORK_CAPSULE_BUILT,
+            "payload": {"capsule_id": "wc_agent_code", "auto_execute": True, "worker": "api"},
+        }
+    ]
+    assert app50._should_auto_approve()
+
+    app50b = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
+    app50b.autonomy = 50
+    app50b.pending_proposals = [{"event_type": INTENT_CAPTURED, "payload": {"task": "x"}}]
+    assert not app50b._should_auto_approve()
 
     app100 = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
     app100.autonomy = 100

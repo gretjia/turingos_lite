@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from turingos.config import load_facilitator_config
+from turingos.facilitator.agent import (
+    agent_boot_turn,
+    agent_proposals_for_code,
+    is_code_task,
+    try_agent_turn,
+)
 from turingos.facilitator.config_wizard import is_config_flow, run_config_wizard
 from turingos.facilitator.project_brief import format_project_cognition
 from turingos.facilitator.provider_setup import (
@@ -92,6 +98,13 @@ def mock_facilitate_turn(
     text = (user_text or "").lower()
 
     if user_text and not selected_choice_id and not select_action:
+        agent = try_agent_turn(
+            user_text=user_text,
+            project_brief=brief,
+            force_mock=True,
+        )
+        if agent:
+            return agent
         kind = (config_draft or {}).get("kind", "meta")
         role = {"facilitator": "facilitator", "worker": "worker"}.get(kind, "meta")
         setup = auto_setup_turn(user_text, role=role, force_mock_test=True)
@@ -176,27 +189,7 @@ def mock_facilitate_turn(
         return continue_after_skip_turn(brief, session_turns)
 
     if boot or (not user_text and not selected_choice_id):
-        has_git = brief.get("has_git")
-        meta_ok = brief.get("config_status", {}).get("meta_ai") == "ok"
-        cognition = format_project_cognition(brief)
-        return normalize_turn({
-            "turn_type": "clarify",
-            "summary": (
-                f"**项目认知**\n\n{cognition}\n\n"
-                f"项目 **{pid}**"
-                + ("，已有 git" if has_git else "")
-                + ("，Meta AI 已配置" if meta_ok else "，Meta AI 未配置")
-                + "。请选择下一步。"
-            ),
-            "project_cognition": cognition,
-            "choices": [
-                {"id": "explore", "label": "扫描并理解这个项目", "hint": "读取 README、目录、最近 commit"},
-                {"id": "task", "label": "我有具体任务要说", "hint": "在下方输入或选「其他需求」"},
-                {"id": "ai_setup", "label": "配置 Meta AI / Worker", "skill_id": "setup-meta-ai-openai"},
-            ],
-            "proposals": [],
-            "facilitator_note": "冷静副驾驶：点选项即可，不必记命令。",
-        })
+        return agent_boot_turn(brief)
 
     if any(w in text for w in ("github", "git", "exist", "已有", "历史", "macro", "理解", "ready", "准备")):
         return normalize_turn({
@@ -244,6 +237,8 @@ def mock_facilitate_turn(
 
 def _proposals_for_intent(text: str, pid: str, brief: dict) -> list[dict]:
     t = text.lower()
+    if is_code_task(text):
+        return agent_proposals_for_code(text, pid, brief)
     proposals: list[dict] = []
     if any(w in t for w in ("github", "git", "exist", "已有", "历史", "macro", "理解", "explore", "扫描")):
         macro = brief.get("macro_head") or f"macro:git:{pid}:HEAD"
@@ -368,6 +363,16 @@ def facilitate_turn(
 ) -> dict[str, Any]:
     if select_action == "skip" or selected_choice_id == "skip":
         return continue_after_skip_turn(project_brief, session_turns)
+    if boot:
+        return agent_boot_turn(project_brief or {})
+    agent = try_agent_turn(
+        user_text=user_text,
+        project_brief=project_brief,
+        force_mock=force_mock,
+        boot=False,
+    )
+    if agent and not selected_choice_id and not select_action:
+        return agent
     explicit_choice = bool(selected_choice_id or select_action)
     if user_text and not boot and not explicit_choice:
         in_wizard_field = bool(

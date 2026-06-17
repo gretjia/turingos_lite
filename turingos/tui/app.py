@@ -395,7 +395,19 @@ class TuiApp(App):
         return mid
 
     def _should_auto_approve(self) -> bool:
-        return self.autonomy >= 100 and bool(self.pending_proposals)
+        if not self.pending_proposals:
+            return False
+        if self.autonomy >= 100:
+            return True
+        if self.autonomy >= 50:
+            return any(
+                p.get("payload", {}).get("auto_execute")
+                for p in self.pending_proposals
+            )
+        return False
+
+    def _should_auto_execute(self) -> bool:
+        return self.autonomy >= 50 or self.headless
 
     def _snapshot_turn(self, turn: dict) -> dict:
         return {
@@ -542,8 +554,12 @@ class TuiApp(App):
             self.refresh_projection()
             return
         last_mid = ""
+        execute_payloads: list[dict] = []
         for p in self.pending_proposals:
-            last_mid = self._dispatch(p["event_type"], p.get("payload", {}))
+            pl = p.get("payload", {})
+            last_mid = self._dispatch(p["event_type"], pl)
+            if pl.get("auto_execute") and pl.get("worker") == "api" and pl.get("tool_plan"):
+                execute_payloads.append(pl)
         if any(
             p.get("payload", {}).get("status") == "delivered"
             or p.get("payload", {}).get("capsule_id") == "wc_delivered"
@@ -554,10 +570,44 @@ class TuiApp(App):
             self._show_delivery()
         self.pending_proposals = []
         self.refine_context = None
-        self.last_action = f"approved & dispatched {last_mid}"
+        agent_note = ""
+        if execute_payloads and self._should_auto_execute():
+            for pl in execute_payloads:
+                agent_note = self._run_api_worker(pl) or agent_note
+        self.last_action = f"approved & dispatched {last_mid}" + (
+            f"; {agent_note}" if agent_note else ""
+        )
         enrich = mock_enrich_turn(last_mid)
+        if agent_note:
+            enrich["summary"] = (
+                f"{enrich.get('summary', '')}\n\n**Agent 后台执行**: {agent_note}"
+            )
         self._apply_facilitator_turn(enrich)
         self.refresh_projection()
+
+    def _run_api_worker(self, payload: dict) -> str:
+        """Execute approved code capsule via whitebox API worker."""
+        from turingos.workers.registry import get_worker
+
+        try:
+            w = get_worker("api")
+            root = payload.get("macro_root") or str(
+                self.project_brief.get("cwd") or Path.cwd()
+            )
+            rec = w.run(
+                self.project_id,
+                payload.get("capsule_id", "wc_agent_code"),
+                tool_plan=payload.get("tool_plan"),
+                macro_root=root,
+                data_dir=self.data_dir,
+            )
+            mutated = rec.get("mutated")
+            return (
+                f"μ worker api — {rec.get('tools_executed', 0)} tools, "
+                f"mutated={mutated}"
+            )
+        except Exception as e:
+            return f"worker failed: {e}"
 
     _CFG_INPUT_FIELDS = {
         "cfg_input_base": "base_url",
@@ -803,6 +853,9 @@ class TuiApp(App):
             self.autonomy = int(ev.get("value", self.autonomy))
             self._set_autonomy(int(ev.get("value", self.autonomy)))
 
+    async def _do_transcribe(self, text: str) -> None:
+        await self._facilitator_run(user_text=text.strip())
+
     async def _headless_agent_loop(self) -> None:
         while True:
             await asyncio.sleep(0.2)
@@ -895,8 +948,11 @@ class TuiApp(App):
     def action_dispatch(self) -> None:
         q = self._get_projection()
         caps = q.get("open_capsules", [])
-        cid = caps[0] if caps else "from-tui-d"
-        self._dispatch("WorkerDispatchPrepared", {"capsule_id": cid})
+        cid = caps[0] if caps else "wc_agent_code"
+        pl = {"capsule_id": cid, "worker": "api", "macro_root": self.project_brief.get("cwd")}
+        self._dispatch("WorkerDispatchPrepared", pl)
+        if self._should_auto_execute():
+            self._run_api_worker(pl)
 
     def action_worker(self) -> None:
         self.last_action = "worker-view"

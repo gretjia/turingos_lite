@@ -5,6 +5,7 @@ export PYTHONPATH="${PYTHONPATH:-}:$(pwd)"
 echo "=== TuringOS Vibe TUI test suite ==="
 python3 -m pytest \
   tests/unit/test_facilitator_v2.py \
+  tests/unit/test_facilitator_agent.py \
   tests/unit/test_config_wizard_nav.py \
   tests/unit/test_provider_setup.py \
   tests/unit/test_vibe_tui.py \

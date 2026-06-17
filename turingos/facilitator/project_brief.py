@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from turingos.config import load_facilitator_config, load_meta_config
+from turingos.config import load_facilitator_config, load_meta_config, load_worker_config
 from turingos.micro.reducer import reduce_state
 
 
@@ -104,6 +104,7 @@ def build_project_brief(
 
     fac_cfg = load_facilitator_config()
     meta_cfg = load_meta_config()
+    worker_cfg = load_worker_config()
     return {
         "project_id": project_id,
         "cwd": str(cwd),
@@ -121,6 +122,7 @@ def build_project_brief(
         "config_status": {
             "facilitator": "ok" if fac_cfg.get("api_key") else "missing",
             "meta_ai": "ok" if meta_cfg.get("api_key") else "missing",
+            "worker": "ok" if worker_cfg.get("api_key") else "missing",
             "facilitator_model": fac_cfg.get("model", "mock"),
         },
     }
