@@ -8,11 +8,15 @@ python3 -m pytest \
   tests/unit/test_config_wizard_nav.py \
   tests/unit/test_provider_setup.py \
   tests/unit/test_vibe_tui.py \
+  tests/tui_e2e/test_human_journey_matrix.py \
+  tests/tui_e2e/test_human_simulator_guards.py \
   tests/tui_e2e/test_pilot_journeys.py \
   tests/unit/test_tui_replay.py \
   tests/agent_sim.py \
   tests/unit/test_cli_smoke.py \
   -q --tb=short
+echo "=== Human UX gate: tests/tui_e2e/test_human_journey_matrix.py (strict Pilot) ==="
+echo "    Verbose audit: ./scripts/run_human_tui_audit.sh"
 echo "=== Real LLM tests (skip if no endpoint) ==="
 python3 -m pytest tests/real_llm_test.py -q --tb=short || true
 echo "=== All mock tests passed ==="

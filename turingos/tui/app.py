@@ -93,10 +93,12 @@ class TuiApp(App):
     Button.success { background: #238636; }
     Button.error { background: #da3633; }
     #composer-row { height: auto; min-height: 8; }
-    #vibe-input { width: 1fr; height: 7; min-height: 5; border: solid #30363d; }
-    #chat-thread { height: 10; max-height: 12; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
+    #vibe-input { width: 1fr; height: 3; min-height: 2; border: solid #30363d; }
+    #chat-thread { height: 4; max-height: 5; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
     #composer-hint { height: 1; margin-bottom: 1; }
-    #composer-body { height: 1fr; min-height: 14; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
+    #composer-body { height: 1fr; min-height: 10; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
+    #action-row { height: auto; }
+    #choice-bar Button { margin-bottom: 1; }
     #preview-md { height: auto; }
     #choice-bar { height: auto; }
     #tape-preview { height: auto; min-height: 1; }
@@ -104,6 +106,12 @@ class TuiApp(App):
     #config-input-row { height: auto; min-height: 3; }
     #config-input { width: 1fr; height: 3; min-height: 3; border: solid #58a6ff; }
     #config-input-hint { height: auto; min-height: 1; margin-bottom: 1; }
+    .compact #left-pane, .compact #right-col, .compact #autonomy-row { display: none; }
+    .compact #center-pane { width: 1fr; border-right: none; }
+    .compact #composer-hint { display: none; }
+    .compact #chat-thread { display: none; }
+    .compact #preview-md { max-height: 5; }
+    .compact #top-bar { height: 1; }
     """
 
     BINDINGS = [
@@ -252,8 +260,20 @@ class TuiApp(App):
         self.set_interval(0.5, self._poll_agent_bus)
         self.refresh_projection()
         self._blur_inputs()
+        self._sync_compact_layout()
         if not self.headless:
             asyncio.create_task(self._facilitator_boot())
+
+    def on_resize(self, _event) -> None:
+        self._sync_compact_layout()
+
+    def _sync_compact_layout(self) -> None:
+        """SSH-friendly layout: full-width composer on 80×24-class terminals."""
+        compact = self.size.height <= 28 or self.size.width <= 100
+        if compact:
+            self.add_class("compact")
+        else:
+            self.remove_class("compact")
 
     def _blur_inputs(self) -> None:
         """Blur NL inputs so legacy hotkeys (A/r/…) reach App key handlers."""

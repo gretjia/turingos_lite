@@ -431,7 +431,10 @@ def run_config_wizard(
             draft["_pending_field"] = None
             draft["step"] = "confirm"
             return _step_turn(draft), draft
-        field = draft.get("_pending_field") or ch.get("config_field") or "base_url"
+        field = draft.get("_pending_field") or ch.get("config_field")
+        if not field:
+            step = draft.get("step", "base_url")
+            field = step if step in ("base_url", "api_key", "model") else "base_url"
         if val:
             draft[field] = val
             draft["_pending_field"] = None

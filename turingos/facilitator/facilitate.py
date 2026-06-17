@@ -368,16 +368,25 @@ def facilitate_turn(
 ) -> dict[str, Any]:
     if select_action == "skip" or selected_choice_id == "skip":
         return continue_after_skip_turn(project_brief, session_turns)
-    if user_text and not boot:
-        role = "meta"
-        if config_draft:
-            kind = config_draft.get("kind", "meta")
-            role = {"facilitator": "facilitator", "worker": "worker"}.get(kind, "meta")
-        setup = auto_setup_turn(
-            user_text, role=role, force_mock_test=force_mock,
+    explicit_choice = bool(selected_choice_id or select_action)
+    if user_text and not boot and not explicit_choice:
+        in_wizard_field = bool(
+            config_draft
+            and (
+                select_action == "config_input"
+                or selected_choice_id == "cfg_input"
+            )
         )
-        if setup:
-            return setup
+        if not in_wizard_field:
+            role = "meta"
+            if config_draft:
+                kind = config_draft.get("kind", "meta")
+                role = {"facilitator": "facilitator", "worker": "worker"}.get(kind, "meta")
+            setup = auto_setup_turn(
+                user_text, role=role, force_mock_test=force_mock,
+            )
+            if setup:
+                return setup
         if not selected_choice_id and not select_action:
             if is_project_question(user_text):
                 return answer_project_question(user_text, project_brief)

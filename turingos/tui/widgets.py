@@ -196,7 +196,16 @@ class VibeComposerPane(Vertical):
         self.query_one("#composer-hint", Static).update(
             "[bold]配置向导[/] — 在 MCQ 下方输入框填写后点「保存」"
         )
-        self.call_after_refresh(lambda: inp.focus())
+        self.call_after_refresh(self._focus_config_panel)
+
+    def _focus_config_panel(self) -> None:
+        try:
+            panel = self.query_one("#config-input-panel")
+            body = self.query_one("#composer-body")
+            body.scroll_to_widget(panel, animate=False)
+            self.query_one("#config-input", Input).focus()
+        except Exception:
+            pass
 
     def hide_config_input(self) -> None:
         self._config_input_field = None
@@ -262,6 +271,8 @@ class VibeComposerPane(Vertical):
         self._choices_ready = False
         self._render_choices(turn.get("choices") or [])
         self.call_after_refresh(self._after_choices_rendered)
+        # Hide Refine/Approve row during MCQ clarify — prevents overlap mis-clicks.
+        self._set_action_row_visible(turn_type == "propose")
         self._set_approve_visible(turn_type == "propose")
         if turn_type == "chat":
             self._set_approve_visible(False)
@@ -272,8 +283,12 @@ class VibeComposerPane(Vertical):
     def _after_choices_rendered(self) -> None:
         self._mark_choices_ready()
         try:
+            bar = self.query_one("#choice-bar", Vertical)
             body = self.query_one("#composer-body", VerticalScroll)
-            body.scroll_end(animate=False)
+            if bar.children:
+                body.scroll_to_widget(bar.children[-1], animate=False)
+            else:
+                body.scroll_end(animate=False)
         except Exception:
             pass
 
@@ -291,6 +306,12 @@ class VibeComposerPane(Vertical):
     def _set_approve_visible(self, visible: bool) -> None:
         try:
             self.query_one("#approve-btn", Button).display = visible
+        except Exception:
+            pass
+
+    def _set_action_row_visible(self, visible: bool) -> None:
+        try:
+            self.query_one("#action-row").display = visible
         except Exception:
             pass
 

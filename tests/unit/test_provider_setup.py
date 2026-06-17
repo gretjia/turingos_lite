@@ -97,9 +97,34 @@ def test_nvidia_paste_via_facilitate_in_wizard():
         select_action="config_input",
         force_mock=True,
     )
-    assert turn["turn_type"] == "chat"
-    assert turn["setup_result"]["ok"]
+    assert turn["turn_type"] == "clarify"
+    assert "确认保存" in turn.get("summary", "")
+    assert turn.get("config_draft", {}).get("api_key", "").startswith("nvapi-")
 
 
 def test_not_project_question_short():
     assert not is_project_question("hi")
+
+
+def test_wizard_api_key_not_hijacked_by_auto_setup():
+    """Regression: typing sk- in wizard config field must stay in wizard."""
+    draft = {
+        "target_id": "worker_api_deepseek",
+        "kind": "worker",
+        "title": "Worker API — DeepSeek",
+        "skill_id": "setup-worker-api-openai",
+        "step": "api_key",
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "api_key": None,
+    }
+    turn = facilitate_turn(
+        user_text="sk-test123456789012345678901234",
+        config_draft=draft,
+        selected_choice_id="cfg_input",
+        select_action="config_input",
+        force_mock=True,
+    )
+    assert turn.get("turn_type") == "clarify"
+    assert "步骤" in turn.get("summary", "")
+    assert turn.get("setup_result") is None
