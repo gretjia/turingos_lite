@@ -1,0 +1,43 @@
+# PlanLoop PlanCapsule v1.2 — fill at activation
+plan_id: "PL-YYYYMMDD-slug"
+version: "1.2"
+initial_intent: ""       # user's first message
+approval_status: pending # pending | approved | rejected
+
+# Step 2 — Grill Me (see grill-me-checklist.md)
+grill_me:
+  round: 0
+  complete: false
+  problem_statement: ""
+  desired_final_state: ""
+  out_of_scope: []
+  success_metrics: []
+  constraints: []
+  open_questions: []
+
+# Step 3 — Research (agent self-managed)
+research:
+  topics: []
+  findings: []           # bullet summaries + source URLs only
+  facts_for_plan: []
+
+# Step 4 — Adversarial (see adversarial-roles.md)
+adversarial_debate:
+  advocate_summary: ""
+  skeptic_risks: []
+  minimalist_cuts: []
+  residual_risks: []
+  consensus_approach: ""
+
+# Step 5 — Canonical output path
+proposal_path: ""        # e.g. plans/PL-YYYYMMDD-slug.md
+proposal_format: canonical-proposal-format-v1.0
+
+# Step 6 — Approval loop
+user_objections: []      # populated on rejection
+re_grill_rounds: 0
+
+handoff:
+  approved_at: ""
+  turing_loop_ready: false
+  index_updated: false

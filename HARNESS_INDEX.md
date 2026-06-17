@@ -11,7 +11,7 @@
 ```text
 1. AGENTS.md              — Charter invariants + core principles (L0 constitution)
 2. HARNESS_INDEX.md       — This file: pick harness, skill, script, test gate (L1 catalog)
-3. Task-specific skill    — e.g. /TuringLoop for long-horizon atoms (L2 executable flow)
+3. Task-specific skill    — e.g. /PlanLoop (plan) or /TuringLoop (execute) (L2 executable flow)
 4. Deep reference         — Charter, architecture/, HUMAN_SIMULATOR.md (L3 detail)
 ```
 
@@ -21,7 +21,8 @@
 |----------------|------------|---------------------|
 | Any code change | `AGENTS.md` → `./run_test.sh` | Unit + e2e mock suite |
 | TUI / Facilitator UX | + `./scripts/run_human_tui_audit.sh` | Human journey matrix (strict Pilot) |
-| Long-horizon atom/phase | `/TuringLoop` (`.grok/skills/turing-loop/`) | TaskCapsule acceptance_commands |
+| New feature / multi-phase work | `/PlanLoop` → user approval → `/TuringLoop` | Canonical Proposal §0 sign-off, then atom acceptance |
+| Long-horizon atom/phase (approved plan) | `/TuringLoop` (`.grok/skills/turing-loop/`) | TaskCapsule acceptance_commands |
 | Charter invariant change | `architecture/07-index-and-conversation-map.md` + FC-A audit | `python -m turingos.cli audit all` |
 | Why was X designed this way? | `architecture/` (not this file) | — |
 
@@ -58,7 +59,17 @@
 
 | id | slash | path | triggers | when_to_use | when_not | acceptance | conflicts_with | owner |
 |----|-------|------|----------|-------------|----------|------------|----------------|-------|
-| `turing-loop` | `/TuringLoop` | `.grok/skills/turing-loop/SKILL.md` | `/TuringLoop`, `Activate AgenticForgeLoop v1.3`, `TuringLoop`, `loop engineering` | Long-horizon atoms/phases; IPQC; BestPractice Alignment (`fresh_bp`); Reflect; Mini-Recovery | Single-file fix; no ETA | TaskCapsule `acceptance_commands` + `./run_test.sh` (+ human audit if TUI) | `/implement` (generic), ad-hoc orchestration | project |
+| `plan-loop` | `/PlanLoop` | `.grok/skills/plan-loop/SKILL.md` | `/PlanLoop`, `Activate PlanLoop v1.2`, `开始第一个 Plan`, `plan before execute` | Structured planning; Grill Me; research; adversarial debate; Canonical Proposal | Single-file fix; plan already approved | User §0 sign-off + Canonical Proposal Format | `/design`, vibe planning without shipgates | project |
+| `turing-loop` | `/TuringLoop` | `.grok/skills/turing-loop/SKILL.md` | `/TuringLoop`, `Activate AgenticForgeLoop v1.3`, `TuringLoop`, `loop engineering` | Long-horizon atoms/phases; IPQC; BestPractice Alignment (`fresh_bp`); Reflect; Mini-Recovery | Single-file fix; no ETA; no approved plan for greenfield | TaskCapsule `acceptance_commands` + `./run_test.sh` (+ human audit if TUI) | `/implement` (generic), ad-hoc orchestration | project |
+
+**References (plan-loop):**
+
+| path | purpose |
+|------|---------|
+| `.grok/skills/plan-loop/references/plan-capsule-template.yaml` | PlanCapsule v1.2 |
+| `.grok/skills/plan-loop/references/canonical-proposal-format.md` | **Mandatory** proposal output (v1.0) |
+| `.grok/skills/plan-loop/references/grill-me-checklist.md` | Step 2 Socratic intent extraction |
+| `.grok/skills/plan-loop/references/adversarial-roles.md` | Step 4 multi-role debate |
 
 **References (turing-loop):**
 
@@ -133,10 +144,11 @@ Use when the task is **not** TuringOS-specific. Paths are on the developer machi
 
 | trigger family | prefer | avoid combining |
 |----------------|--------|-----------------|
-| Long turingoslite work | `/TuringLoop` | `/implement`, `/execute-plan` |
+| Greenfield / multi-phase planning | `/PlanLoop` → approve → `/TuringLoop` | `/design`, vibe planning, direct `/TuringLoop` |
+| Long turingoslite execution | `/TuringLoop` | `/implement`, `/execute-plan` |
 | Post-change verify | TuringLoop Verifier **or** `/check-work` | both in same step |
 | Code review | `/review` | duplicate reviewer subagent |
-| Design before atoms | Charter atoms + Planner | `/design` unless greenfield module |
+| Design doc only (no shipgates) | `/design` | `/PlanLoop` when TuringOS atoms needed |
 | Commit | `git-commit-validator` skill | ad-hoc messages |
 
 **Rule:** No two skills with the same primary slash command. New skills must register here before merge.
@@ -166,3 +178,4 @@ Use when the task is **not** TuringOS-specific. Paths are on the developer machi
 |------|--------|
 | 2026-06-17 | Initial index: turing-loop, test gates, global/bundled skill pointers, agent entry block |
 | 2026-06-17 | turing-loop → AgenticForgeLoop v1.3: BestPractice Alignment Pass, Reflect step, TaskCapsule `frontier_mode` |
+| 2026-06-17 | plan-loop v1.2: Grill Me, research, adversarial debate, Canonical Proposal Format; handoff to TuringLoop |

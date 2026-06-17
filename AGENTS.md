@@ -83,7 +83,7 @@
 
 1. This file (`AGENTS.md`) — invariants and principles
 2. **`HARNESS_INDEX.md`** — full registry of harness docs, project/global skills, scripts, test gates, trigger conflicts, and maintenance rules
-3. Project skills — `.grok/skills/README.md` → e.g. `/TuringLoop` for long-horizon loop work
+3. Project skills — `.grok/skills/README.md` → `/PlanLoop` (plan) then `/TuringLoop` (execute)
 
 **References (for recursive audit)**
 
