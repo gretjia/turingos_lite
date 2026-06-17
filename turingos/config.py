@@ -44,12 +44,84 @@ CONFIG_DIR = XDG_DATA_HOME / "turingos" / "config"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 META_CONFIG_FILE = CONFIG_DIR / "meta_ai.json"
+FACILITATOR_CONFIG_FILE = CONFIG_DIR / "facilitator_ai.json"
 KEYRING_SERVICE = "turingos"
 KEYRING_USERNAME = "meta_ai"
+KEYRING_FACILITATOR_USERNAME = "facilitator_ai"
 
 
 def _get_meta_config_path() -> Path:
     return META_CONFIG_FILE
+
+
+def _apply_facilitator_env_extras(cfg: dict[str, Any]) -> None:
+    """NVIDIA Diffusion Gemma and other facilitator knobs."""
+    if os.environ.get("TURINGOS_FACILITATOR_TEMPERATURE"):
+        cfg["temperature"] = float(os.environ["TURINGOS_FACILITATOR_TEMPERATURE"])
+    if os.environ.get("TURINGOS_FACILITATOR_TOP_P"):
+        cfg["top_p"] = float(os.environ["TURINGOS_FACILITATOR_TOP_P"])
+    if os.environ.get("TURINGOS_FACILITATOR_MAX_TOKENS"):
+        cfg["max_tokens"] = int(os.environ["TURINGOS_FACILITATOR_MAX_TOKENS"])
+    stream = os.environ.get("TURINGOS_FACILITATOR_STREAM", "").lower()
+    if stream in ("1", "true", "yes"):
+        cfg["stream"] = True
+    if os.environ.get("TURINGOS_FACILITATOR_EXTRA_BODY"):
+        try:
+            cfg["extra_body"] = json.loads(os.environ["TURINGOS_FACILITATOR_EXTRA_BODY"])
+        except Exception:
+            pass
+    elif "nvidia.com" in (cfg.get("base_url") or ""):
+        cfg.setdefault("extra_body", {"chat_template_kwargs": {"enable_thinking": True}})
+    base = cfg.get("base_url") or ""
+    if "nvidia.com" in base:
+        cfg["provider"] = "nvidia"
+
+
+def load_facilitator_config() -> dict[str, Any]:
+    """Facilitator AI (fast MCQ co-pilot). Separate from Meta/Work AI."""
+    env_base = os.environ.get("TURINGOS_FACILITATOR_BASE_URL")
+    env_key = os.environ.get("TURINGOS_FACILITATOR_API_KEY")
+    env_model = os.environ.get("TURINGOS_FACILITATOR_MODEL")
+
+    if env_base or env_key or env_model:
+        cfg: dict[str, Any] = {
+            "base_url": env_base or "https://integrate.api.nvidia.com/v1",
+            "api_key": env_key,
+            "model": env_model or "google/diffusiongemma-26b-a4b-it",
+            "source": "env",
+        }
+        _apply_facilitator_env_extras(cfg)
+        return cfg
+
+    meta: dict[str, Any] = {
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "google/diffusiongemma-26b-a4b-it",
+        "source": "persisted",
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "max_tokens": 4096,
+    }
+    if FACILITATOR_CONFIG_FILE.exists():
+        try:
+            data = json.loads(FACILITATOR_CONFIG_FILE.read_text())
+            meta.update({k: v for k, v in data.items() if k in ("base_url", "model", "temperature", "top_p", "max_tokens")})
+        except Exception:
+            pass
+    if keyring:
+        try:
+            meta["api_key"] = keyring.get_password(KEYRING_SERVICE, KEYRING_FACILITATOR_USERNAME)
+        except Exception:
+            meta["api_key"] = None
+    else:
+        meta["api_key"] = None
+    if not meta.get("api_key"):
+        fallback = load_meta_config()
+        if fallback.get("api_key"):
+            meta["api_key"] = fallback["api_key"]
+            if meta.get("source") == "persisted" and not FACILITATOR_CONFIG_FILE.exists():
+                meta["base_url"] = fallback.get("base_url", meta["base_url"])
+    _apply_facilitator_env_extras(meta)
+    return meta
 
 
 def _apply_meta_env_extras(cfg: dict[str, Any]) -> None:

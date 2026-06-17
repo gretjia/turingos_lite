@@ -233,12 +233,19 @@ def transcribe_intent(
     force_mock: bool = False,
     config: dict[str, Any] | None = None,
 ) -> list[dict]:
-    """Transcribe NL vibe to formal event proposals. Mock when no API or force_mock."""
+    """Legacy API: propose-only path via Facilitator v2."""
+    from turingos.facilitator.facilitate import facilitate_turn
+
     projection = projection or {}
-    cfg = config or load_meta_config()
-    if force_mock or not cfg.get("api_key"):
-        return mock_transcribe(nl, projection)
-    try:
-        return _call_openai_compatible(cfg, projection, nl, refine_context)
-    except Exception:
-        return mock_transcribe(nl, projection)
+    brief = {"project_id": projection.get("project_id", "demo_app"), **projection}
+    turn = facilitate_turn(
+        user_text=nl,
+        select_action="propose",
+        selected_choice_id="submit",
+        project_brief=brief,
+        force_mock=force_mock or not (config or load_meta_config()).get("api_key"),
+        config=config,
+    )
+    if turn.get("turn_type") == "propose":
+        return turn.get("proposals", [])
+    return mock_transcribe(nl, projection)

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from turingos.events import make_event, SYSTEM_BOOTSTRAPPED, PROJECT_READY
-from turingos.facilitator.transcribe import mock_transcribe
+from turingos.facilitator.facilitate import facilitate_turn
 from turingos.micro.git_tape import MicroGitTape
 from turingos.micro.rtool import MicroRtool
 from turingos.micro.wtool import append as wtool_append
@@ -53,8 +53,16 @@ def test_agent_sim_ten_random_vibes(sim_data_dir):
     random.seed(42)
     vibes = random.sample(VIBES, 10)
 
+    brief = {"project_id": pid, "has_git": True}
     for vibe in vibes:
-        app.pending_proposals = mock_transcribe(vibe, {"project_id": pid})
+        turn = facilitate_turn(
+            user_text=vibe,
+            selected_choice_id="submit",
+            select_action="propose",
+            project_brief=brief,
+            force_mock=True,
+        )
+        app.pending_proposals = turn.get("proposals", [])
         if random.random() > 0.2:
             app._approve_proposals()
         app.loop_progress = min(100, app.loop_progress + 10)

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from turingos.events import INTENT_CAPTURED, WORK_CAPSULE_BUILT, HUMAN_DECISION
+from turingos.facilitator.facilitate import facilitate_turn, mock_facilitate_turn
 from turingos.facilitator.transcribe import mock_transcribe, transcribe_intent
 from turingos.micro.git_tape import MicroGitTape
 from turingos.micro.rtool import MicroRtool
@@ -37,7 +38,7 @@ def test_mock_transcribe_deliver():
 
 def test_transcribe_force_mock_without_key(data_dir):
     os.environ["TURINGOS_DATA_DIR"] = str(data_dir)
-    props = transcribe_intent("create todo", {"project_id": "x"}, force_mock=True)
+    props = transcribe_intent("explore project history", {"project_id": "x", "has_git": True}, force_mock=True)
     assert len(props) >= 1
 
 
@@ -55,7 +56,7 @@ def test_autonomy_levels(data_dir):
     app50 = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
     app50.autonomy = 50
     app50.pending_proposals = [{"event_type": INTENT_CAPTURED, "payload": {"task": "x"}}]
-    assert app50._should_auto_approve()
+    assert not app50._should_auto_approve()
 
     app100 = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
     app100.autonomy = 100
@@ -76,11 +77,10 @@ def test_vibe_compose_approve_dispatch(data_dir):
     async def drive():
         app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
         async with app.run_test() as pilot:
-            await pilot.pause()
-            inp = app.query_one("#center-pane #vibe-input")
-            inp.value = "vibe: create todo app"
-            await pilot.click("#transcribe-btn")
             await pilot.pause(1.0)
+            await app._facilitator_run(
+                selected_choice_id="submit", select_action="propose", user_text="create todo"
+            )
             assert app.pending_proposals
             await pilot.press("A")
             await pilot.pause()
@@ -100,11 +100,19 @@ def test_agent_bus_drives_flow(data_dir):
     gt.init()
     bus = AgentBus()
     app = TuiApp(project_id=pid, data_dir=data_dir, agent_bus=bus, force_mock_facilitator=True)
+    app.project_brief = {"project_id": pid, "has_git": True}
     bus.post({"action": "vibe", "text": "create todo app"})
     app._poll_agent_bus()
-    assert len(app.pending_proposals) >= 1
+    assert app.facilitator_turn.get("turn_type") in ("clarify", "propose")
+    turn = facilitate_turn(
+        user_text="todo",
+        select_action="propose",
+        selected_choice_id="submit",
+        project_brief=app.project_brief,
+        force_mock=True,
+    )
+    app.pending_proposals = turn.get("proposals", [])
     bus.post({"action": "approve"})
-    app.pending_proposals = mock_transcribe("todo", {"project_id": pid})
     app._handle_agent_event({"action": "approve"})
     r = MicroRtool(pid, data_dir=data_dir)
     assert r.read_tip().startswith("μ:")

@@ -17,9 +17,10 @@ from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Label, ListItem, ListView, Static
 
-from turingos.config import load_meta_config, save_meta_config
+from turingos.config import load_facilitator_config, load_meta_config, save_meta_config
 from turingos.events import make_event
-from turingos.facilitator.transcribe import transcribe_intent
+from turingos.facilitator.facilitate import facilitate_turn, mock_enrich_turn
+from turingos.facilitator.project_brief import build_project_brief
 from turingos.micro.reducer import reduce_state
 from turingos.micro.rtool import MicroRtool
 from turingos.micro.wtool import append as wtool_append
@@ -134,10 +135,16 @@ class TuiApp(App):
         self.autonomy = 50
         self.current_goal = "Explore Software 3.0 agency"
         self.pending_proposals: list[dict] = []
+        self.facilitator_turn: dict = {}
+        self.session_turns: list[dict] = []
+        self.project_brief: dict = {}
+        self.awaiting_freeform = False
         self.refine_context: str | None = None
         self.loop_progress = 0
         self.delivered = False
         self._agent_task: asyncio.Task | None = None
+        self._boot_done = False
+        self._facilitator_lock = asyncio.Lock()
 
     def _get_projection(self) -> dict:
         return reduce_state(self.project_id, data_dir=self.data_dir)
@@ -219,11 +226,16 @@ class TuiApp(App):
 
     def on_mount(self) -> None:
         self._check_first_time_meta_setup()
+        self.project_brief = build_project_brief(
+            self.project_id, data_dir=self.data_dir
+        )
         self._sync_model_label()
         self._set_autonomy(self.autonomy)
         self.set_interval(0.5, self._poll_agent_bus)
         self.refresh_projection()
         self._blur_inputs()
+        if not self.headless:
+            asyncio.create_task(self._facilitator_boot())
 
     def _blur_inputs(self) -> None:
         """Blur NL inputs so legacy hotkeys (A/r/…) reach App key handlers."""
@@ -238,10 +250,10 @@ class TuiApp(App):
             self._agent_task = asyncio.create_task(self._headless_agent_loop())
 
     def _sync_model_label(self) -> None:
-        cfg = load_meta_config()
-        label = cfg.get("model", "local-mock")
+        cfg = load_facilitator_config()
+        label = cfg.get("model", "mock")
         if not cfg.get("api_key") or self.force_mock_facilitator:
-            label = "local-mock"
+            label = "mock"
         try:
             self.query_one("#top-bar", TopBar).model_label = label
         except Exception:
@@ -283,9 +295,12 @@ class TuiApp(App):
             self.query_one("#evidence-pane", EvidencePane).update_evidence(ev_lines)
         except Exception:
             pass
-        next_text = f"last: {self.last_action}\nSuggested: transcribe → approve"
+        tt = self.facilitator_turn.get("turn_type", "")
+        next_text = f"last: {self.last_action}\nmode: {tt or '—'}"
         if self.pending_proposals:
-            next_text += f"\n[pending {len(self.pending_proposals)} proposals]"
+            next_text += f"\n[pending {len(self.pending_proposals)} proposals — Approve]"
+        elif tt == "clarify":
+            next_text += "\n[pick a choice or type + Transcribe]"
         try:
             self.query_one("#next-pane", NextActionPane).update_action(
                 next_text, self.loop_progress
@@ -324,21 +339,72 @@ class TuiApp(App):
         return mid
 
     def _should_auto_approve(self) -> bool:
-        if self.autonomy >= 100:
-            return True
-        if self.autonomy >= 50 and self.pending_proposals:
-            types = {p["event_type"] for p in self.pending_proposals}
-            if types <= {"IntentCaptured"}:
-                return True
-        return False
+        return self.autonomy >= 100 and bool(self.pending_proposals)
+
+    def _apply_facilitator_turn(self, turn: dict) -> None:
+        self.facilitator_turn = turn
+        self.session_turns.append({
+            "turn_type": turn.get("turn_type"),
+            "summary": turn.get("summary", "")[:300],
+            "skill_id": turn.get("skill_id"),
+        })
+        try:
+            composer = self.query_one("#center-pane", VibeComposerPane)
+            composer.render_turn(turn)
+        except Exception:
+            pass
+        if turn.get("turn_type") == "propose":
+            self.pending_proposals = turn.get("proposals", [])
+        elif turn.get("turn_type") != "enrich":
+            self.pending_proposals = []
+
+    async def _facilitator_run(
+        self,
+        *,
+        user_text: str = "",
+        selected_choice_id: str | None = None,
+        select_action: str | None = None,
+        boot: bool = False,
+    ) -> None:
+        async with self._facilitator_lock:
+            composer = self.query_one("#center-pane", VibeComposerPane)
+            composer.render_turn({
+                "turn_type": "clarify",
+                "summary": "*Facilitator 思考中…*",
+                "choices": [],
+                "proposals": [],
+            })
+            turn = await asyncio.to_thread(
+                facilitate_turn,
+                user_text=user_text,
+                selected_choice_id=selected_choice_id,
+                select_action=select_action,
+                project_brief=self.project_brief,
+                session_turns=self.session_turns,
+                boot=boot,
+                force_mock=self.force_mock_facilitator
+                or not load_facilitator_config().get("api_key"),
+            )
+            self._apply_facilitator_turn(turn)
+            self.last_action = f"facilitator:{turn.get('turn_type')}"
+            self.refresh_projection()
+            if turn.get("turn_type") == "propose" and self._should_auto_approve():
+                self._approve_proposals()
+
+    async def _facilitator_boot(self) -> None:
+        if self._boot_done:
+            return
+        self._boot_done = True
+        await self._facilitator_run(boot=True)
 
     def _approve_proposals(self) -> None:
         if not self.pending_proposals:
-            self.last_action = "approve: no pending proposals"
+            self.last_action = "approve: no pending proposals (pick「可以提交」first)"
             self.refresh_projection()
             return
+        last_mid = ""
         for p in self.pending_proposals:
-            self._dispatch(p["event_type"], p.get("payload", {}))
+            last_mid = self._dispatch(p["event_type"], p.get("payload", {}))
         if any(
             p.get("payload", {}).get("status") == "delivered"
             or p.get("payload", {}).get("capsule_id") == "wc_delivered"
@@ -349,34 +415,58 @@ class TuiApp(App):
             self._show_delivery()
         self.pending_proposals = []
         self.refine_context = None
-        self.last_action = "approved & dispatched"
+        self.last_action = f"approved & dispatched {last_mid}"
+        enrich = mock_enrich_turn(last_mid)
+        self._apply_facilitator_turn(enrich)
         self.refresh_projection()
 
-    async def _do_transcribe(self, text: str) -> None:
-        if not text.strip():
+    def on_vibe_composer_pane_choice_selected(
+        self, event: VibeComposerPane.ChoiceSelected
+    ) -> None:
+        ch = event.choice
+        action = ch.get("select_action")
+        if event.choice_id == "other" or action == "freeform":
+            self.awaiting_freeform = True
+            try:
+                inp = self.query_one("#center-pane #vibe-input", Input)
+                inp.placeholder = ch.get(
+                    "input_prompt", "你还有什么其他需求？请在下方输入。"
+                )
+                self.last_action = "awaiting freeform input — type and Transcribe"
+                self.refresh_projection()
+            except Exception:
+                pass
             return
-        composer = self.query_one("#center-pane", VibeComposerPane)
-        composer.set_preview([], streaming="*Transcribing…*")
-        proj = self._get_projection()
-        proposals = await asyncio.to_thread(
-            transcribe_intent,
-            text,
-            proj,
-            refine_context=self.refine_context,
-            force_mock=self.force_mock_facilitator
-            or not load_meta_config().get("api_key"),
-        )
-        self.pending_proposals = proposals
-        composer.set_preview(proposals)
-        self.last_action = f"transcribed {len(proposals)} proposal(s)"
-        self.refresh_projection()
-        if self._should_auto_approve():
-            self._approve_proposals()
+        if event.choice_id == "submit" or action == "propose":
+            summary = self.facilitator_turn.get("summary", "")
+            asyncio.create_task(self._facilitator_run(
+                user_text=summary,
+                selected_choice_id="submit",
+                select_action="propose",
+            ))
+            return
+        if action == "skip":
+            self.last_action = "enrich skipped"
+            asyncio.create_task(self._facilitator_boot())
+            return
+        asyncio.create_task(self._facilitator_run(
+            user_text="",
+            selected_choice_id=event.choice_id,
+            select_action=action,
+        ))
 
     def on_vibe_composer_pane_transcribe_pressed(
         self, event: VibeComposerPane.TranscribePressed
     ) -> None:
-        asyncio.create_task(self._do_transcribe(event.text))
+        text = event.text.strip()
+        if not text and not self.awaiting_freeform:
+            return
+        asyncio.create_task(self._facilitator_run(
+            user_text=text,
+            selected_choice_id="other" if self.awaiting_freeform else None,
+            select_action="freeform" if self.awaiting_freeform else None,
+        ))
+        self.awaiting_freeform = False
 
     def on_vibe_composer_pane_approve_pressed(
         self, _event: VibeComposerPane.ApprovePressed
@@ -402,11 +492,20 @@ class TuiApp(App):
     ) -> None:
         self.pending_proposals = []
         self.refine_context = None
+        self.facilitator_turn = {}
+        self.pending_proposals = []
         try:
-            self.query_one("#center-pane", VibeComposerPane).set_preview([])
+            composer = self.query_one("#center-pane", VibeComposerPane)
+            composer.render_turn({
+                "turn_type": "clarify",
+                "summary": "已取消。",
+                "choices": [],
+                "proposals": [],
+            })
         except Exception:
             pass
-        self.last_action = "proposal rejected"
+        self.last_action = "session rejected"
+        asyncio.create_task(self._facilitator_run(boot=True))
         self.refresh_projection()
 
     def on_evidence_pane_replay_pressed(self, _event: EvidencePane.ReplayPressed) -> None:
@@ -451,16 +550,14 @@ class TuiApp(App):
             text = ev.get("payload", {}).get("task") or ev.get("text", "")
             try:
                 asyncio.get_running_loop()
-                asyncio.create_task(self._do_transcribe(text))
+                asyncio.create_task(self._facilitator_run(user_text=text))
             except RuntimeError:
-                self.pending_proposals = transcribe_intent(
-                    text,
-                    self._get_projection(),
-                    refine_context=self.refine_context,
-                    force_mock=self.force_mock_facilitator
-                    or not load_meta_config().get("api_key"),
+                turn = facilitate_turn(
+                    user_text=text,
+                    project_brief=self.project_brief,
+                    force_mock=True,
                 )
-                self.last_action = f"transcribed {len(self.pending_proposals)} proposal(s)"
+                self._apply_facilitator_turn(turn)
                 self.refresh_projection()
         elif et == "HumanDecision" or ev.get("action") == "approve":
             self._approve_proposals()
@@ -483,6 +580,7 @@ class TuiApp(App):
         return {
             "state": self._get_projection(),
             "pending_proposals": self.pending_proposals,
+            "facilitator_turn": self.facilitator_turn,
             "autonomy": self.autonomy,
             "goal": self.current_goal,
             "last_action": self.last_action,

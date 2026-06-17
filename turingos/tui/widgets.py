@@ -5,10 +5,10 @@ import json
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Button, Input, Label, Markdown, ProgressBar, Static, Tree
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label, Markdown, ProgressBar, Static, Tree
 
 
 class VibeInput(Input):
@@ -110,6 +110,12 @@ class VibeComposerPane(Vertical):
     class RejectPressed(Message):
         pass
 
+    class ChoiceSelected(Message):
+        def __init__(self, choice_id: str, choice: dict) -> None:
+            self.choice_id = choice_id
+            self.choice = choice
+            super().__init__()
+
     preview_md = reactive("")
 
     def compose(self) -> ComposeResult:
@@ -118,12 +124,62 @@ class VibeComposerPane(Vertical):
             yield Input(placeholder="Type your intent in natural language…", id="vibe-input")
             yield Button("Transcribe", id="transcribe-btn", variant="primary")
         yield Markdown("", id="preview-md")
+        yield Vertical(id="choice-bar")
         yield Static("", id="tape-preview")
         with Horizontal(id="action-row"):
             yield Button("Refine", id="refine-btn")
             yield Button("Approve", id="approve-btn", variant="success")
             yield Button("Edit", id="edit-btn")
             yield Button("Reject", id="reject-btn", variant="error")
+
+    def render_turn(self, turn: dict) -> None:
+        """Render facilitator clarify / propose / enrich turn."""
+        md = self.query_one("#preview-md", Markdown)
+        tape = self.query_one("#tape-preview", Static)
+        turn_type = turn.get("turn_type", "clarify")
+        summary = turn.get("summary", "")
+        note = turn.get("facilitator_note", "")
+        parts = [f"### Facilitator\n\n{summary}"]
+        if note:
+            parts.append(f"*{note}*")
+        if turn_type == "propose":
+            props = turn.get("proposals", [])
+            parts.append("\n**Proposal Card**")
+            for i, p in enumerate(props, 1):
+                et = p.get("event_type", "?")
+                pl = p.get("payload", {})
+                vis = pl.get("visible_markdown", "")
+                parts.append(f"\n**{i}. {et}**")
+                if vis:
+                    parts.append(vis)
+                else:
+                    parts.append(f"```\n{json.dumps(pl, indent=2)[:500]}\n```")
+            tape.update("[green]Will hit tape:[/] " + ", ".join(
+                p["event_type"] for p in props
+            ) if props else "")
+        elif turn_type == "enrich":
+            tape.update("[dim]Post-approve enrichment — optional[/]")
+        else:
+            tape.update("[dim]选择一项，或选「其他需求」在下方输入[/]")
+        md.update("\n\n".join(parts))
+        self._render_choices(turn.get("choices") or [])
+        self._set_approve_visible(turn_type == "propose")
+
+    def _render_choices(self, choices: list[dict]) -> None:
+        bar = self.query_one("#choice-bar", Vertical)
+        bar.remove_children()
+        for ch in choices:
+            cid = ch.get("id", "opt")
+            label = ch.get("label", cid)
+            btn = Button(label, id=f"choice-{cid}", variant="default")
+            btn.choice_data = ch  # type: ignore[attr-defined]
+            bar.mount(btn)
+
+    def _set_approve_visible(self, visible: bool) -> None:
+        try:
+            self.query_one("#approve-btn", Button).display = visible
+        except Exception:
+            pass
 
     def set_preview(self, proposals: list[dict], streaming: str = "") -> None:
         md = self.query_one("#preview-md", Markdown)
@@ -153,7 +209,11 @@ class VibeComposerPane(Vertical):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
-        if bid == "transcribe-btn":
+        if bid.startswith("choice-"):
+            cid = bid[7:]
+            ch = getattr(event.button, "choice_data", {"id": cid})
+            self.post_message(self.ChoiceSelected(cid, ch))
+        elif bid == "transcribe-btn":
             text = self.query_one("#vibe-input", Input).value
             self.post_message(self.TranscribePressed(text))
         elif bid == "approve-btn":

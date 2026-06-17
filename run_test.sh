@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 export PYTHONPATH="${PYTHONPATH:-}:$(pwd)"
 echo "=== TuringOS Vibe TUI test suite ==="
 python3 -m pytest \
+  tests/unit/test_facilitator_v2.py \
   tests/unit/test_vibe_tui.py \
   tests/unit/test_tui_replay.py \
   tests/agent_sim.py \

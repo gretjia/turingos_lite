@@ -40,4 +40,5 @@ env/
 # Misc
 .env
 nvidia_env.sh
+facilitator_env.sh
 .DS_Store
