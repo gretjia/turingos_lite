@@ -113,9 +113,18 @@ def test_simulated_user_full_flow_tui(data_dir):
     pre = r.read_tip()
 
     async def drive():
+        from turingos.tui.widgets import VibeComposerPane
+
         app = TuiApp(project_id=pid, data_dir=data_dir, force_mock_facilitator=True)
         async with app.run_test() as pilot:
-            await pilot.pause(1.0)
+            async with app._facilitator_lock:
+                pass
+            composer = app.query_one("#center-pane", VibeComposerPane)
+            for _ in range(60):
+                if composer._choices_ready:
+                    break
+                await pilot.pause(0.05)
+
             assert app.facilitator_turn.get("turn_type") == "clarify"
             assert "other" in {c["id"] for c in app.facilitator_turn.get("choices", [])}
 
@@ -124,7 +133,9 @@ def test_simulated_user_full_flow_tui(data_dir):
                 "existing project with GitHub and Macro Git — learn history first"
             )
             await pilot.click("#transcribe-btn")
-            await pilot.pause(0.8)
+            async with app._facilitator_lock:
+                pass
+            await pilot.pause(0.3)
             assert app.facilitator_turn["turn_type"] == "clarify"
 
             await app._facilitator_run(selected_choice_id="explore")

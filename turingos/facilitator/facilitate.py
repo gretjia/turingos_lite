@@ -8,6 +8,11 @@ from typing import Any
 from turingos.config import load_facilitator_config
 from turingos.facilitator.config_wizard import is_config_flow, run_config_wizard
 from turingos.facilitator.project_brief import format_project_cognition
+from turingos.facilitator.provider_setup import (
+    answer_project_question,
+    auto_setup_turn,
+    is_project_question,
+)
 from turingos.facilitator.schema import (
     OTHER_CHOICE,
     SUBMIT_CHOICE,
@@ -85,6 +90,13 @@ def mock_facilitate_turn(
     pid = (project_brief or {}).get("project_id", "demo_app")
     brief = project_brief or {}
     text = (user_text or "").lower()
+
+    if user_text and not selected_choice_id and not select_action:
+        setup = auto_setup_turn(user_text, role="meta", force_mock_test=True)
+        if setup:
+            return setup
+        if is_project_question(user_text):
+            return answer_project_question(user_text, brief)
 
     if select_action == "propose" or selected_choice_id == "submit":
         return normalize_turn({
@@ -350,6 +362,14 @@ def facilitate_turn(
 ) -> dict[str, Any]:
     if select_action == "skip" or selected_choice_id == "skip":
         return continue_after_skip_turn(project_brief, session_turns)
+    if user_text and not selected_choice_id and not select_action and not boot:
+        setup = auto_setup_turn(
+            user_text, role="meta", force_mock_test=force_mock,
+        )
+        if setup:
+            return setup
+        if is_project_question(user_text):
+            return answer_project_question(user_text, project_brief)
     if is_config_flow(
         config_draft=config_draft,
         selected_choice_id=selected_choice_id,

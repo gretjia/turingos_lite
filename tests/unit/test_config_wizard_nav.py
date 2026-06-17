@@ -50,6 +50,5 @@ def test_turn_history_back_forward(data_dir):
             assert app.facilitator_turn.get("summary") == first_summary
             app._navigate_turn_history(1)
             assert app.facilitator_turn.get("summary") == second_summary
-            await pilot.pause(0.3)
 
     asyncio.run(drive())

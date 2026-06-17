@@ -89,11 +89,11 @@ def ensure_standard_choices(choices: list[dict]) -> list[dict]:
 
 def normalize_turn(data: dict[str, Any]) -> dict[str, Any]:
     turn_type = data.get("turn_type", "clarify")
-    if turn_type not in ("clarify", "propose", "enrich"):
+    if turn_type not in ("clarify", "propose", "enrich", "chat"):
         turn_type = "clarify"
     choices = data.get("choices") or []
     wizard_mode = bool(data.get("wizard_mode"))
-    if turn_type == "clarify" and not wizard_mode:
+    if turn_type in ("clarify", "chat") and not wizard_mode:
         choices = ensure_standard_choices(choices)
     proposals = data.get("proposals") or []
     if turn_type == "propose" and not proposals:
@@ -114,6 +114,9 @@ def normalize_turn(data: dict[str, Any]) -> dict[str, Any]:
     cfg_draft = data.get("config_draft")
     if cfg_draft:
         out["config_draft"] = cfg_draft
+    setup_result = data.get("setup_result")
+    if setup_result:
+        out["setup_result"] = setup_result
     return out
 
 

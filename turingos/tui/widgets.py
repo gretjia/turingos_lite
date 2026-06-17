@@ -5,19 +5,39 @@ import json
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Input, Label, Markdown, ProgressBar, Static, Tree
+from textual.widgets import Button, Input, Label, Markdown, ProgressBar, Static, TextArea, Tree
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
 
-class VibeInput(Input):
-    """NL composer input; not auto-focused so legacy hotkeys reach the App."""
+class VibeInput(TextArea):
+    """Multi-line NL composer; not auto-focused so legacy hotkeys reach the App."""
 
     ALLOW_MAXIMIZE = False
 
+    def __init__(self, *args, **kwargs) -> None:
+        self._placeholder = ""
+        super().__init__(*args, **kwargs)
+
     def on_focus(self, _event) -> None:
         pass
+
+    @property
+    def value(self) -> str:
+        return self.text
+
+    @value.setter
+    def value(self, text: str) -> None:
+        self.text = text
+
+    @property
+    def placeholder(self) -> str:
+        return self._placeholder
+
+    @placeholder.setter
+    def placeholder(self, text: str) -> None:
+        self._placeholder = text
 
 
 class TopBar(Horizontal):
@@ -121,9 +141,14 @@ class VibeComposerPane(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("★ VIBE COMPOSER", classes="pane-title vibe-title")
+        yield Static(
+            "[dim]输入区（多行）— 可问项目问题或粘贴 API token[/]",
+            id="composer-hint",
+        )
         with Horizontal(id="composer-row"):
-            yield Input(placeholder="Type your intent in natural language…", id="vibe-input")
-            yield Button("Transcribe", id="transcribe-btn", variant="primary")
+            yield VibeInput("", id="vibe-input", show_line_numbers=False)
+            yield Button("Send", id="transcribe-btn", variant="primary")
+        yield VerticalScroll(id="chat-thread")
         yield Markdown("", id="preview-md")
         yield Vertical(id="choice-bar")
         yield Static("", id="tape-preview")
@@ -133,13 +158,24 @@ class VibeComposerPane(Vertical):
             yield Button("Edit", id="edit-btn")
             yield Button("Reject", id="reject-btn", variant="error")
 
-    def render_turn(self, turn: dict) -> None:
-        """Render facilitator clarify / propose / enrich turn."""
+    def append_chat(self, role: str, content: str) -> None:
+        thread = self.query_one("#chat-thread", VerticalScroll)
+        label = "You" if role == "user" else "Facilitator"
+        color = "#58a6ff" if role == "user" else "#3fb950"
+        thread.mount(Static(f"[{color}]{label}:[/] {content[:2000]}"))
+        thread.scroll_end(animate=False)
+
+    def render_turn(self, turn: dict, *, user_message: str = "") -> None:
+        """Render facilitator clarify / propose / enrich / chat turn."""
         md = self.query_one("#preview-md", Markdown)
         tape = self.query_one("#tape-preview", Static)
         turn_type = turn.get("turn_type", "clarify")
         summary = turn.get("summary", "")
         note = turn.get("facilitator_note", "")
+        if user_message:
+            self.append_chat("user", user_message)
+        if turn_type == "chat":
+            self.append_chat("facilitator", summary)
         parts = [f"### Facilitator\n\n{summary}"]
         if note:
             parts.append(f"*{note}*")
@@ -162,6 +198,8 @@ class VibeComposerPane(Vertical):
             tape.update(
                 "[dim]批准后可选补充 — 点「不需要，继续」查看项目认知并进入下一步[/]"
             )
+        elif turn_type == "chat":
+            tape.update("[dim]对话模式 — 回复已显示在上方线程；可选 MCQ 继续[/]")
         elif turn.get("wizard_mode"):
             tape.update("[dim]配置向导 — 按步骤输入；可点「退回」返回上一题[/]")
         else:
@@ -174,6 +212,8 @@ class VibeComposerPane(Vertical):
         self._render_choices(turn.get("choices") or [])
         self.call_after_refresh(self._mark_choices_ready)
         self._set_approve_visible(turn_type == "propose")
+        if turn_type == "chat":
+            self._set_approve_visible(False)
 
     def _mark_choices_ready(self) -> None:
         self._choices_ready = True
@@ -230,7 +270,7 @@ class VibeComposerPane(Vertical):
             ch = getattr(event.button, "choice_data", {"id": cid})
             self.post_message(self.ChoiceSelected(cid, ch))
         elif bid == "transcribe-btn":
-            text = self.query_one("#vibe-input", Input).value
+            text = self.query_one("#vibe-input", VibeInput).value
             self.post_message(self.TranscribePressed(text))
         elif bid == "approve-btn":
             self.post_message(self.ApprovePressed())

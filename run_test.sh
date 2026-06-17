@@ -6,7 +6,9 @@ echo "=== TuringOS Vibe TUI test suite ==="
 python3 -m pytest \
   tests/unit/test_facilitator_v2.py \
   tests/unit/test_config_wizard_nav.py \
+  tests/unit/test_provider_setup.py \
   tests/unit/test_vibe_tui.py \
+  tests/tui_e2e/test_pilot_journeys.py \
   tests/unit/test_tui_replay.py \
   tests/agent_sim.py \
   tests/unit/test_cli_smoke.py \

@@ -33,6 +33,7 @@ from turingos.tui.widgets import (
     NextActionPane,
     TopBar,
     VibeComposerPane,
+    VibeInput,
 )
 
 
@@ -91,7 +92,10 @@ class TuiApp(App):
     #delivery-banner { display: none; height: 5; background: #0d2818; border: solid #238636; margin: 0 1; padding: 1; text-align: center; }
     Button.success { background: #238636; }
     Button.error { background: #da3633; }
-    #vibe-input { width: 1fr; }
+    #composer-row { height: auto; min-height: 8; }
+    #vibe-input { width: 1fr; height: 7; min-height: 5; border: solid #30363d; }
+    #chat-thread { height: 10; max-height: 12; border: solid #30363d; padding: 0 1; margin: 0 0 1 0; }
+    #composer-hint { height: 1; margin-bottom: 1; }
     """
 
     BINDINGS = [
@@ -150,6 +154,7 @@ class TuiApp(App):
         self._agent_task: asyncio.Task | None = None
         self._boot_done = False
         self._facilitator_lock = asyncio.Lock()
+        self._last_user_message = ""
 
     def _get_projection(self) -> dict:
         return reduce_state(self.project_id, data_dir=self.data_dir)
@@ -407,7 +412,9 @@ class TuiApp(App):
         )
         return out
 
-    def _apply_facilitator_turn(self, turn: dict, *, record_history: bool = True) -> None:
+    def _apply_facilitator_turn(
+        self, turn: dict, *, record_history: bool = True, user_message: str = "",
+    ) -> None:
         if turn.get("config_draft") is not None:
             self.config_draft = dict(turn["config_draft"])
         elif not turn.get("wizard_mode") and turn.get("turn_type") != "enrich":
@@ -427,7 +434,12 @@ class TuiApp(App):
             })
         try:
             composer = self.query_one("#center-pane", VibeComposerPane)
-            composer.render_turn(self._turn_with_nav(turn))
+            composer.render_turn(
+                self._turn_with_nav(turn),
+                user_message=user_message or self._last_user_message,
+            )
+            if user_message or turn.get("turn_type") == "chat":
+                self._last_user_message = ""
         except Exception:
             pass
         if turn.get("turn_type") == "propose":
@@ -474,8 +486,13 @@ class TuiApp(App):
             elif turn.get("config_draft") is None and turn.get("wizard_mode"):
                 if selected_choice_id in ("cfg_back_menu", "ai_setup") or select_action == "cfg_back_menu":
                     self.config_draft = None
-            self._apply_facilitator_turn(turn)
+            self._apply_facilitator_turn(turn, user_message=user_text)
             self.last_action = f"facilitator:{turn.get('turn_type')}"
+            if user_text and turn.get("setup_result", {}).get("ok"):
+                self.project_brief = build_project_brief(
+                    self.project_id, data_dir=self.data_dir
+                )
+                self._sync_model_label()
             self.refresh_projection()
             if turn.get("turn_type") == "propose" and self._should_auto_approve():
                 self._approve_proposals()
@@ -523,9 +540,9 @@ class TuiApp(App):
         if action == "config_input" or ch.get("config_field"):
             self.awaiting_config_field = ch.get("config_field")
             try:
-                inp = self.query_one("#center-pane #vibe-input", Input)
+                inp = self.query_one("#center-pane #vibe-input", VibeInput)
                 inp.placeholder = ch.get(
-                    "input_prompt", "输入配置值后点 Transcribe"
+                    "input_prompt", "输入配置值后点 Send"
                 )
                 self.last_action = f"config input: {self.awaiting_config_field}"
                 self.refresh_projection()
@@ -535,7 +552,7 @@ class TuiApp(App):
         if event.choice_id == "other" or action == "freeform":
             self.awaiting_freeform = True
             try:
-                inp = self.query_one("#center-pane #vibe-input", Input)
+                inp = self.query_one("#center-pane #vibe-input", VibeInput)
                 inp.placeholder = ch.get(
                     "input_prompt", "你还有什么其他需求？请在下方输入。"
                 )
@@ -571,6 +588,12 @@ class TuiApp(App):
         text = event.text.strip()
         if not text and not self.awaiting_freeform and not self.awaiting_config_field:
             return
+        self._last_user_message = text
+        try:
+            inp = self.query_one("#center-pane #vibe-input", VibeInput)
+            inp.value = ""
+        except Exception:
+            pass
         if self.awaiting_config_field or self.config_draft:
             asyncio.create_task(self._facilitator_run(
                 user_text=text,
@@ -595,7 +618,7 @@ class TuiApp(App):
         self, _event: VibeComposerPane.RefinePressed
     ) -> None:
         try:
-            inp = self.query_one("#center-pane #vibe-input", Input)
+            inp = self.query_one("#center-pane #vibe-input", VibeInput)
             self.refine_context = (
                 f"Previous: {json.dumps(self.pending_proposals)[:500]}"
             )
@@ -714,7 +737,7 @@ class TuiApp(App):
         def on_done(cmd: str | None) -> None:
             if cmd == "transcribe":
                 try:
-                    t = self.query_one("#center-pane #vibe-input", Input).value
+                    t = self.query_one("#center-pane #vibe-input", VibeInput).value
                     asyncio.create_task(self._do_transcribe(t))
                 except Exception:
                     pass
