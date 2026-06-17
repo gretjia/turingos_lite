@@ -4,6 +4,8 @@ Socratic intent extraction. **Do not skip.** First user input is always incomple
 
 ## Exit criteria
 
+**Machine exit:** set `grill_me.complete: true` in PlanCapsule only when ALL below are true.
+
 Grill Me completes when ALL are true:
 - [ ] Problem statement is one sentence, falsifiable
 - [ ] Desired final state is concrete (not "make it better")
