@@ -2,7 +2,7 @@
 
 **Purpose:** Single operational catalog for agents and humans. Answers: *what harness/skills exist, when to use each, what conflicts, and what acceptance gates apply.*
 
-**Last verified:** 2026-06-17 — update date whenever entries change (`git log -1 --oneline HARNESS_INDEX.md`).
+**Last verified:** 2026-06-18 — update date whenever entries change (`git log -1 --oneline HARNESS_INDEX.md`).
 
 ---
 
@@ -21,7 +21,7 @@
 |----------------|------------|---------------------|
 | Any code change | `AGENTS.md` → `./run_test.sh` | Unit + e2e mock suite |
 | TUI / Facilitator UX | + `./scripts/run_human_tui_audit.sh` | Human journey matrix (strict Pilot) |
-| New feature / multi-phase work | `/PlanLoop` → user approval → `/TuringLoop` | Canonical Proposal §0 sign-off, then atom acceptance |
+| New feature / multi-phase work | `/PlanLoop` v1.3 (Grill-with-docs first) → user approval → `/TuringLoop` | `CONTEXT.md` + ADRs + Canonical Proposal §0 sign-off, then atom acceptance |
 | Long-horizon atom/phase (approved plan) | `/TuringLoop` (`.grok/skills/turing-loop/`) | TaskCapsule acceptance_commands |
 | Charter invariant change | `architecture/07-index-and-conversation-map.md` + FC-A audit | `python -m turingos.cli audit all` |
 | Why was X designed this way? | `architecture/` (not this file) | — |
@@ -59,17 +59,19 @@
 
 | id | slash | path | triggers | when_to_use | when_not | acceptance | conflicts_with | owner |
 |----|-------|------|----------|-------------|----------|------------|----------------|-------|
-| `plan-loop` | `/PlanLoop` | `.grok/skills/plan-loop/SKILL.md` | `/PlanLoop`, `Activate PlanLoop v1.2`, `开始第一个 Plan`, `plan before execute` | Structured planning; Grill Me; research; adversarial debate; Canonical Proposal | Single-file fix; plan already approved | User §0 sign-off + Canonical Proposal Format | `/design`, vibe planning without shipgates | project |
+| `plan-loop` | `/PlanLoop` | `.grok/skills/plan-loop/SKILL.md` | `/PlanLoop`, `Activate PlanLoop v1.3`, `开始第一个 Plan`, `plan before execute` | Structured planning; Grill-with-docs (grilling + CONTEXT/ADRs); research; adversarial debate; Canonical Proposal | Single-file fix; plan already approved | User §0 sign-off + Canonical Proposal Format | `/design`, vibe planning without shipgates | project |
 | `turing-loop` | `/TuringLoop` | `.grok/skills/turing-loop/SKILL.md` | `/TuringLoop`, `Activate AgenticForgeLoop v1.4`, `TuringLoop`, `loop engineering` | Long-horizon atoms/phases; TestForge (embedded); IPQC; `fresh_bp`; Reflect; Mini-Recovery | Single-file fix; no ETA; no approved plan for greenfield | TestForge shipgate + TaskCapsule acceptance (+ human audit if TUI) | `/implement` (generic), ad-hoc orchestration | project |
 
 **References (plan-loop):**
 
 | path | purpose |
 |------|---------|
-| `.grok/skills/plan-loop/references/plan-capsule-template.yaml` | PlanCapsule v1.2 |
+| `.grok/skills/plan-loop/CHANGELOG.md` | v1.2→v1.3 history, artifact layout, adversarial test — **read before editing PlanLoop** |
+| `.grok/skills/plan-loop/references/grill-with-docs.md` | **Step 1 start** — grilling + domain modeling (`CONTEXT.md` + plan ADRs) |
+| `.grok/skills/plan-loop/references/plan-capsule-template.yaml` | PlanCapsule v1.3 (`grill_with_docs`, not `grill_me`) |
 | `.grok/skills/plan-loop/references/canonical-proposal-format.md` | **Mandatory** proposal output (v1.0) |
-| `.grok/skills/plan-loop/references/grill-me-checklist.md` | Step 2 Socratic intent extraction |
-| `.grok/skills/plan-loop/references/adversarial-roles.md` | Step 4 multi-role debate |
+| `.grok/skills/plan-loop/references/grill-me-checklist.md` | Step 1 machine exit criteria (grill-with-docs) |
+| `.grok/skills/plan-loop/references/adversarial-roles.md` | Step 3 multi-role debate |
 
 **References (turing-loop):**
 
@@ -82,6 +84,22 @@
 | `.grok/skills/turing-loop/scripts/calc-ipqc-interval.sh` | IPQC interval from ETA |
 
 See also: `.grok/skills/README.md` (per-skill one-liners).
+
+---
+
+## Project Agent Skills (repo: `.agents/skills/`)
+
+Installed via `npx skills@latest add mattpocock/skills` (lockfile: `skills-lock.json`). Grok Build discovers these as project skills. **PlanLoop v1.3** inlines the relevant behavior into `.grok/skills/plan-loop/references/grill-with-docs.md`; use `.agents/` skills only when running standalone workflows outside PlanLoop.
+
+| id | path | PlanLoop relationship |
+|----|------|----------------------|
+| `grill-with-docs` | `.agents/skills/grill-with-docs/SKILL.md` | Router only (7 lines); real spec = plan-loop `references/grill-with-docs.md` |
+| `grilling` | `.agents/skills/grilling/SKILL.md` | Source behavior for Step 1 interview |
+| `domain-modeling` | `.agents/skills/domain-modeling/SKILL.md` | Source behavior for Step 1 `CONTEXT.md` + ADRs |
+| `review` | `.agents/skills/review/SKILL.md` | Standards + Spec dual-axis review (orthogonal to PlanLoop) |
+| `tdd` | `.agents/skills/tdd/SKILL.md` | Test-first atoms (use with `/TuringLoop`) |
+
+Full catalog: 34 skills under `.agents/skills/` — not all listed here; add row when a skill becomes harness-critical.
 
 ---
 
@@ -136,6 +154,7 @@ Use when the task is **not** TuringOS-specific. Paths are on the developer machi
 | `audits-flowcharts` | script | `audits/flowcharts.py` | Flowchart coverage | via CLI or direct |
 | `audits-e2e` | script | `audits/e2e.py` | E2E harness audit | via CLI or direct |
 | `audits-zombie` | script | `audits/global_zombie_check.py` | No zombie nodes | charter 7.2 nodes |
+| `planloop-adversarial` | test-gate | `audits/planloop_adversarial.py` | After PlanLoop skill/harness changes | 35 checks: refs, Steps 0–6 dry-run, failure gates; temp under `.cache/planloop-adversarial/` |
 
 **Two-layer testing rule (TUI):** `./run_test.sh` green ≠ UX green. Human matrix is the UX gate. Forbidden in tests: `_facilitator_run`, `post_message(ChoiceSelected)`, direct `inp.value =` shortcuts.
 
@@ -180,4 +199,6 @@ Use when the task is **not** TuringOS-specific. Paths are on the developer machi
 | 2026-06-17 | Initial index: turing-loop, test gates, global/bundled skill pointers, agent entry block |
 | 2026-06-17 | turing-loop → AgenticForgeLoop v1.3: BestPractice Alignment Pass, Reflect step, TaskCapsule `frontier_mode` |
 | 2026-06-17 | plan-loop v1.2: Grill Me, research, adversarial debate, Canonical Proposal Format; handoff to TuringLoop |
+| 2026-06-18 | plan-loop v1.3: Grill-with-docs as mandatory Step 1 (grilling + plan CONTEXT/ADRs); PlanCapsule `grill_with_docs` |
+| 2026-06-18 | `.agents/skills/` mattpocock bundle registered; `plan-loop/CHANGELOG.md`; `audits/planloop_adversarial.py` (35/35 PASS adversarial dry-run) |
 | 2026-06-17 | turing-loop → v1.4: TestForge embedded in VERIFY/IPQC, Mini-Recovery, REFLECT; `test_mode` field |

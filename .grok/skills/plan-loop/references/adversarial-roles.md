@@ -1,4 +1,4 @@
-# Adversarial Debate Roles (PlanLoop Step 4)
+# Adversarial Debate Roles (PlanLoop Step 3)
 
 Multi-perspective collision before canonical summary. Use subagents or explicit persona switches.
 

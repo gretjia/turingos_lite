@@ -1,6 +1,6 @@
 # Canonical Proposal Format v1.0
 
-**Mandatory output** of PlanLoop Step 5 (汇总). Copy this skeleton; fill every section.
+**Mandatory output** of PlanLoop Step 4 (汇总). Copy this skeleton; fill every section.
 
 ```markdown
 # Plan Proposal — [Task Name] v1.2

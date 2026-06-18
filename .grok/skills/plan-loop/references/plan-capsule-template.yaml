@@ -1,13 +1,16 @@
-# PlanLoop PlanCapsule v1.2 — fill at activation
+# PlanLoop PlanCapsule v1.3 — fill at activation
 plan_id: "PL-YYYYMMDD-slug"
-version: "1.2"
+version: "1.3"
 initial_intent: ""       # user's first message
 approval_status: pending # pending | approved | rejected
+plan_dir: ""             # e.g. plans/PL-YYYYMMDD-slug/
 
-# Step 2 — Grill Me (see grill-me-checklist.md)
-grill_me:
+# Step 1 — Grill-with-docs (see grill-with-docs.md + grill-me-checklist.md)
+grill_with_docs:
   round: 0
   complete: false
+  context_path: ""       # e.g. plans/PL-YYYYMMDD-slug/CONTEXT.md
+  adrs: []               # e.g. plans/PL-YYYYMMDD-slug/adr/0001-....md
   problem_statement: ""
   desired_final_state: ""
   out_of_scope: []
@@ -15,13 +18,13 @@ grill_me:
   constraints: []
   open_questions: []
 
-# Step 3 — Research (agent self-managed)
+# Step 2 — Research (agent self-managed)
 research:
   topics: []
   findings: []           # bullet summaries + source URLs only
   facts_for_plan: []
 
-# Step 4 — Adversarial (see adversarial-roles.md)
+# Step 3 — Adversarial (see adversarial-roles.md)
 adversarial_debate:
   advocate_summary: ""
   skeptic_risks: []
@@ -29,15 +32,19 @@ adversarial_debate:
   residual_risks: []
   consensus_approach: ""
 
-# Step 5 — Canonical output path
+# Step 4 — Canonical output path
 proposal_path: ""        # e.g. plans/PL-YYYYMMDD-slug.md
 proposal_format: canonical-proposal-format-v1.0
 
-# Step 6 — Approval loop
+# Step 5 — Approval loop
 user_objections: []      # populated on rejection
 re_grill_rounds: 0
 
+# Step 6 — Handoff (after approval)
 handoff:
   approved_at: ""
   turing_loop_ready: false
+  proposal_path: ""
+  context_path: ""
+  adrs: []
   index_updated: false

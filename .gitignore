@@ -39,6 +39,9 @@ env/
 !.grok/skills/**
 *.log
 
+# Harness audit temp
+.cache/
+
 # Misc
 .env
 nvidia_env.sh
